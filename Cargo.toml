@@ -6,7 +6,18 @@ license = "MIT OR Apache-2.0"
 publish = false
 description = "Embassy application firmware for Pinecil V2 / BL706"
 
+[features]
+default = ["fpu"]
+fpu = ["bl706-hal/fpu"]
+
 [dependencies]
+heapless = "0.9.3"
+uom = { version = "0.39.0", package = "uom-ng", default-features = false, features = ["si", "u32"] }
+usbpd = { version = "3.1.0", default-features = false, git = "https://github.com/elagil/usbpd", rev = "b1f0bb9720e362039ac5e5a511199c828da26c04", features = ["epr"] }
+
+# Unify the driver's registry traits with the policy engine's workspace traits.
+[patch.crates-io]
+usbpd-traits = { git = "https://github.com/elagil/usbpd", rev = "b1f0bb9720e362039ac5e5a511199c828da26c04" }
 
 [profile.release]
 codegen-units = 1
@@ -19,10 +30,15 @@ panic = "abort"
 panic = "abort"
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
-bl706-hal = { version = "0.1.0", path = "../bl706-embassy/crates/bl706-hal", features = ["flash"] }
+bl706-hal = { version = "0.1.0", features = ["flash"], git = "https://github.com/okhsunrog/bl706-embassy", rev = "86d402c719fd5814ae549b549e25dc555b659f47" }
+embassy-embedded-hal = "0.6.0"
 embassy-executor = { version = "0.10.0", default-features = false, features = ["platform-spin", "executor-thread"] }
+embassy-futures = "0.1.2"
+embassy-sync = "0.8.0"
 embassy-time = "0.5.1"
 embedded-graphics = "0.8.2"
+fusb302b = { version = "0.1.0", path = "../fusb302b", features = ["log"] }
+log = { version = "0.4.35", features = ["release_max_level_info"] }
 rtt-target = "0.6.2"
 ssd1306 = { version = "0.10.0", features = ["async"] }
 static_cell = "2.1.1"

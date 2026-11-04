@@ -1,4 +1,4 @@
-"""Cargo runner for BL706 RAM/flash ELFs and probe-rs RTT."""
+"""Cargo runner for bootable BL706 flash ELFs and probe-rs RTT."""
 from pathlib import Path
 import os
 import sys

@@ -39,17 +39,23 @@ def audit(path, fpu=False, probes=False):
         prepared, image, boot_header = prepare(data)
         assert len(boot_header) == 176
         assert entry == syms["_flash_start"] == 0x23000000
-        # A single linear copy must reproduce each initialized RAM section.
+        # Bootstrap copies only startup/vectors and writable initialized data.
         for section_name, source_symbol, base_symbol in [
             (".init", "__tcm_load_xip", "__tcm_start"),
             (".vectors", "__tcm_load_xip", "__tcm_start"),
-            (".text", "__ocram_load_xip", "__ocram_start"),
-            (".rodata", "__ocram_load_xip", "__ocram_start"),
             (".data", "__ocram_load_xip", "__ocram_start"),
         ]:
             sh = sections[section_name]
             offset = syms[source_symbol] - 0x23000000 + sh[3] - syms[base_symbol]
             assert image[offset:offset+sh[5]] == data[sh[4]:sh[4]+sh[5]], (path, "copy mismatch", section_name)
+        for section_name in (".text", ".rodata"):
+            sh = sections[section_name]
+            assert 0x23000000 <= sh[3] < sh[3]+sh[5] <= 0x230ff000
+            assert not sh[2] & 1, (path, "writable XIP section", section_name)
+            offset = sh[3] - 0x23000000
+            assert image[offset:offset+sh[5]] == data[sh[4]:sh[4]+sh[5]]
+        assert 0x23000000 <= syms["__bl706_main"] < 0x230ff000
+        assert tcm_start <= syms["bl706_irq_entry"] < 0x22020000
     else:
         assert entry == syms["_start"]
     assert syms["bl706_vectors"] % 64 == 0
@@ -72,12 +78,13 @@ def audit(path, fpu=False, probes=False):
             if va == 0x21000000:
                 assert filesz == memsz == 176
                 continue
-            if va == 0x23000000:
-                assert memsz <= 4096
+            if 0x23000000 <= va < 0x230ff000:
+                assert pa == va + 0x1000 and va + memsz <= 0x230ff000
                 continue
         else:
             assert va == pa
-        assert any(lo <= va and va+memsz <= hi for lo, hi in [(tcm_start,tcm_start+0x4000),(0x22020000,0x2202c000)]), (path, hex(va), memsz)
+        ranges = [(tcm_start,0x22020000),(0x22020000,0x2202c000)]
+        assert any(lo <= va and va+memsz <= hi for lo, hi in ranges), (path, hex(va), memsz)
     sh = sections[".vectors"]
     vectors = struct.unpack_from("<80I", data, sh[4])
     assert sh[5] == 320
@@ -98,6 +105,7 @@ def audit(path, fpu=False, probes=False):
                 q, funct = half & 3, half >> 13
                 if q in (0,2) and funct in (1,3,5,7):
                     float_ops += 1
+                    assert funct not in (1,5), (path, "unexpected compressed D instruction", hex(pc))
                 if q == 2 and funct == 7: saved.add((half >> 2) & 31)
                 if q == 2 and funct == 3: restored.add((half >> 7) & 31)
                 pos += 2
@@ -107,6 +115,10 @@ def audit(path, fpu=False, probes=False):
                 opcode = word & 0x7f
                 if opcode == 0x2f: atomic.append(pc)
                 if opcode in (0x07,0x27,0x43,0x47,0x4b,0x4f,0x53): float_ops += 1
+                if opcode in (0x07,0x27):
+                    assert (word >> 12) & 7 == 2, (path, "non-f32 FP load/store", hex(pc))
+                if opcode in (0x43,0x47,0x4b,0x4f,0x53):
+                    assert (word >> 25) & 3 == 0, (path, "non-f32 FP operation", hex(pc))
                 if (word >> 15) & 31 == 2 and (word >> 12) & 7 == 2:
                     if opcode == 0x27: saved.add((word >> 20) & 31)
                     if opcode == 0x07: restored.add((word >> 7) & 31)
@@ -118,8 +130,8 @@ def audit(path, fpu=False, probes=False):
         assert saved == restored == set(range(32)), (path, "FP context save/restore incomplete", saved, restored)
     else:
         assert float_ops == 0, (path, "unexpected FP opcode", float_ops)
-    print(f"{path.relative_to(ROOT)}: {'flash+RAM' if flash else 'RAM'}/vector/ABI checks OK; A={len(atomic)}, FP={float_ops}, stack=8192")
+    print(f"{path}: {'XIP+RAM' if flash else 'RAM'}/vector/ABI checks OK; A={len(atomic)}, FP={float_ops}, stack=8192")
 
 if __name__ == "__main__":
-    path = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT/"target/riscv32imc-unknown-none-elf/release/pinecil-rs"
-    audit(path.resolve())
+    path = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT/"target/riscv32imfc-unknown-none-elf/release/pinecil-rs"
+    audit(path.resolve(), fpu="riscv32imfc-unknown-none-elf" in str(path))

@@ -1,7 +1,7 @@
 """Prepare BL702-format, unsigned Pinecil V2 flash ELFs with CRC32 and SHA256.
 
 References: Bouffalo bflb-mcu-tool libs/bl702/{bootheader_cfg_keys,img_create_do}.py.
-The linked ELF uses physical flash load addresses and retains RAM debug symbols.
+The linked ELF uses physical flash load addresses and retains XIP/RAM debug symbols.
 """
 from hashlib import sha256
 from pathlib import Path
@@ -84,7 +84,7 @@ def prepare(elf):
         "b0 04 05 00 ff ff 14 00"
     )
     struct.pack_into("<I", header, 96, zlib.crc32(header[12:96]))
-    # Start on RC32M with an 8 MHz SPI clock; the RAM runtime sets its own clock.
+    # Start on RC32M with an 8 MHz SPI clock; clock-latch routines execute in ITCM.
     header[100:112] = bytes.fromhex("50 43 46 47 02 00 00 00 01 03 00 00")
     struct.pack_into("<I", header, 112, zlib.crc32(header[104:112]))
     # No segments, cache enabled; CRC/hash checks enabled; no boot2 or partitions.
