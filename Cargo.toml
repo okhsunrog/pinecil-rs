@@ -1,0 +1,28 @@
+[package]
+name = "pinecil-rs"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Embassy application firmware for Pinecil V2 / BL706"
+
+[dependencies]
+
+[profile.release]
+codegen-units = 1
+debug = 2
+lto = true
+opt-level = "s"
+panic = "abort"
+
+[profile.dev]
+panic = "abort"
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+bl706-hal = { version = "0.1.0", path = "../bl706-embassy/crates/bl706-hal", features = ["flash"] }
+embassy-executor = { version = "0.10.0", default-features = false, features = ["platform-spin", "executor-thread"] }
+embassy-time = "0.5.1"
+embedded-graphics = "0.8.2"
+rtt-target = "0.6.2"
+ssd1306 = { version = "0.10.0", features = ["async"] }
+static_cell = "2.1.1"

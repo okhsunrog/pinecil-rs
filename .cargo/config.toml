@@ -1,0 +1,6 @@
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+[target.'cfg(target_arch = "riscv32")']
+rustflags = ["-C", "link-arg=-Tbl706.x"]
+runner = "uv run --no-project tools/run.py"
