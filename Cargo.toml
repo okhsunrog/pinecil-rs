@@ -39,8 +39,8 @@ panic = "abort"
 panic = "abort"
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
-bl706-ble = { git = "https://github.com/okhsunrog/bl706-embassy", rev = "036c67cf1dca44856fd9ae19b4f82d6ce33da521", version = "0.1.0", features = ["controller"], optional = true }
-bl706-hal = { version = "0.1.0", features = ["flash"], git = "https://github.com/okhsunrog/bl706-embassy", rev = "036c67cf1dca44856fd9ae19b4f82d6ce33da521" }
+bl706-ble = { git = "https://github.com/okhsunrog/bl706-embassy", rev = "0362b12961ae3b208c508d9e8496c0bcd2791ac0", version = "0.1.0", features = ["controller"], optional = true }
+bl706-hal = { version = "0.1.0", features = ["flash"], git = "https://github.com/okhsunrog/bl706-embassy", rev = "0362b12961ae3b208c508d9e8496c0bcd2791ac0" }
 critical-section = "1.2.0"
 embassy-embedded-hal = "0.6.0"
 embassy-executor = { version = "0.10.0", default-features = false }

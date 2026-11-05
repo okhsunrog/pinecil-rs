@@ -1,0 +1,59 @@
+{
+  "date": "2026-11-06",
+  "board": "Pinecil V2 / BL706, cartridge inserted, iron in stand",
+  "app_base_commit": "ffa3abc5feeddc4aa827d9786ef9ba73f89b56eb",
+  "hal_revision": "0362b12961ae3b208c508d9e8496c0bcd2791ac0",
+  "features": ["default", "heater-diagnostics"],
+  "payload_bytes": 340464,
+  "payload_sha256": "2e9f1c841abf3dc31e812531ace95d9d307bbd06061fbed648f05ff50f1dc6cb",
+  "programming": {
+    "backend": "probe-rs, JTAG 1000 kHz",
+    "boot_header_prepared": true,
+    "readback_verify": true,
+    "reprogrammed_with_previous_watchdog_armed": true,
+    "elapsed_seconds": 95.36
+  },
+  "initial_counter_failure": {
+    "hal_revision": "036c67cf1dca44856fd9ae19b4f82d6ce33da521",
+    "first_request_us": 20000,
+    "first_measured_us": 19997,
+    "second_request_us": 2000,
+    "second_completed": false,
+    "comparator_raw": 2046,
+    "subsequent_capture_latch": 30245,
+    "result": "startup interlock prevented heating; three APB reads returned a previous TCVWR latch"
+  },
+  "synchronized_counter_checks": {
+    "zero_pwm_duty": true,
+    "requested_us": [20000, 2000],
+    "measured_us": [20044, 2003],
+    "second_executor_stall_us": 6000,
+    "completed": 2,
+    "cancelled": 0,
+    "maximum_recorded_lateness_us": 44,
+    "independent_waveform_measurement": false
+  },
+  "resistance_probe": {
+    "off_on_off_uv": [629, 3708, 634],
+    "classified_milliohm": 6200,
+    "independent_resistance_measurement": false
+  },
+  "five_volt_interlock": {
+    "requested_limit_mw": 5000,
+    "requested_target_c": 80,
+    "observed_fault": "NoPower",
+    "additional_carrier_bursts": 0,
+    "adc_errors": 0,
+    "returned_to_off_after_bench_deadline": true
+  },
+  "watchdog": {
+    "output_stopped_before_test": true,
+    "feeding_intentionally_withheld": true,
+    "observed_reboot": true,
+    "off_after_restart": true,
+    "watchdog_flag_at_hal_entry": false,
+    "qualification": "controlled reset observation, not an independently measured timeout or verified reset-flag semantics"
+  },
+  "live_heating": "pending",
+  "absolute_temperature_calibration": false
+}

@@ -295,7 +295,7 @@ OCRAM layout: `cargo run --release --no-default-features --features fpu`.
 
 | Component | Source and validated revision | Role |
 |---|---|---|
-| `bl706-hal` / `bl706-pac` / `bl706-ble` | [bl706-embassy](https://github.com/okhsunrog/bl706-embassy), [timer divisor and interrupt access fixes](https://github.com/okhsunrog/bl706-embassy/commit/464c096db03972950ef9e4dff6b6c23466ae9153), [explicit compare acknowledgement](https://github.com/okhsunrog/bl706-embassy/commit/036c67cf1dca44856fd9ae19b4f82d6ce33da521) | Startup, interrupts, FPU context, peripherals, radio controller and Embassy integration |
+| `bl706-hal` / `bl706-pac` / `bl706-ble` | [bl706-embassy](https://github.com/okhsunrog/bl706-embassy), [synchronized timer counter revision](https://github.com/okhsunrog/bl706-embassy/commit/0362b12961ae3b208c508d9e8496c0bcd2791ac0) | Startup, interrupts, FPU context, peripherals, radio controller and Embassy integration |
 | `fusb302b` | [0.2.0 on crates.io](https://crates.io/crates/fusb302b/0.2.0), [release source](https://github.com/okhsunrog/fusb302b/tree/v0.2.0) | Async FUSB302B PD PHY |
 | `usbpd` / `usbpd-traits` | [official 3.1.0 revision](https://github.com/elagil/usbpd/commit/b1f0bb9720e362039ac5e5a511199c828da26c04) | PD policy engine, including EPR |
 

@@ -52,7 +52,8 @@ The acquisition loop targets a 100 ms period:
 5. Request at most one carrier burst of 500..75000 us; shorter requests become
    zero output. A further burst requires a new valid frame.
 
-TIMER0 is a free-running nominal 1 MHz counter. Its compare ISR disables
+TIMER0 is a free-running nominal 1 MHz counter, read through TCVSYN's
+continuously synchronized sample. Its compare ISR disables
 PWM before doing bookkeeping, then masks the compare interrupt. There is no
 automatic repeat. Absolute future deadlines use wrapping 32-bit addition;
 arming acknowledges a previously latched comparator flag. TIMER0 and the
@@ -150,7 +151,23 @@ limits, stale/error frames, power loss, no-rise detection, anti-windup and a
 simple thermal-load simulation with a voltage change. Release/Clippy and ELF
 audits cover normal, diagnostic and no-BLE builds. These are software results.
 
-The initial physical qualification is pending: zero-duty cutoff checks,
-resistance readings, watchdog reset, bounded low-power heating, fault injection
-and coexistence with UI, BLE and PD. Earlier read-only ADC/PD/BLE results do
-not establish that live heater control works.
+On 2026-11-06, a diagnostic image was programmed and readback-verified on the
+physical Pinecil. The first zero-duty test exposed stale TCVWR counter reads:
+the 20 ms interval completed but the second comparator was set behind the
+counter. Startup correctly prevented live output. Switching the HAL to TCVSYN
+produced 20044 us and 2003 us for requests of 20000 us and 2000 us, including
+the 6 ms polling stall. Both completed with no cancellation; maximum recorded
+lateness was 44 us. These are firmware timestamps, not scope measurements.
+
+The off/on/off probe measured 629 / 3708 / 634 uV and classified this cartridge
+as 6.2 ohms. A 5 W / 80 C request while powered from laptop USB produced
+`Fault(NoPower)` with zero additional bursts, then returned OFF at its deadline.
+ADC errors stayed zero. With output stopped, intentionally withholding watchdog
+feeding caused a reboot and a new OFF startup. Its reset flag was false by HAL
+entry, so reset-flag semantics and an independently timed watchdog interval are
+not claimed. Reprogramming with the previous watchdog armed also passed.
+
+The [structured hardware record](heating-hardware.json) pins the tested image.
+Bounded live heating, fault injection during heating and UI/BLE/PD coexistence
+with a hot tip are still pending. Earlier read-only ADC/PD/BLE results do not
+establish that live heater control works.
