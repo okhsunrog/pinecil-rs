@@ -5,5 +5,4 @@ target = "riscv32imfc-unknown-none-elf"
 build-std = ["core"]
 
 [target.'cfg(target_arch = "riscv32")']
-rustflags = ["-C", "link-arg=-Tpinecil.x"]
 runner = "uv run --no-project tools/run.py"

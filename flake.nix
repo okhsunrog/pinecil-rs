@@ -16,7 +16,7 @@
           rust = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         in {
           default = pkgs.mkShell {
-            packages = [ rust pkgs.uv pkgs.git pkgs.llvm pkgs.openocd ];
+            packages = [ rust pkgs.uv pkgs.git pkgs.binutils pkgs.llvm pkgs.openocd ];
             UV_PYTHON_DOWNLOADS = "never";
             UV_PYTHON = "${pkgs.python3}/bin/python3";
           };

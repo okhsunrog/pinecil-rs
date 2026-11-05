@@ -6,6 +6,10 @@ Rust 2024 / Embassy firmware for **Pinecil V2**, powered by the Bouffalo BL706.
 The firmware boots from SPI flash, executes code through XIP, uses the
 single-precision hardware FPU, and exposes logs over RTT through JTAG.
 
+This branch contains a separate BLE experiment. The normal application below
+still uses the default build; BLE runs with `--features ble --example ble`.
+See [BLE setup, GATT test and limits](docs/ble.md).
+
 The current application includes:
 
 - A 96×16 OLED UI using async [`ssd1306`](https://crates.io/crates/ssd1306)
@@ -100,7 +104,7 @@ cd pinecil-rs
 ### With Nix
 
 The [development shell](flake.nix) supplies the pinned Rust toolchain, Python,
-uv, Git, LLVM and OpenOCD:
+uv, Git, GNU binutils, LLVM and OpenOCD:
 
 ```sh
 nix develop
@@ -322,3 +326,6 @@ Hardware results and diagnostic history:
 - [Flash, OLED, buttons, XIP and FPU validation](docs/validation.md).
 - [Board schematic / IronOS comparison and SPR bring-up](docs/pd-audit.md).
 - [28 V EPR traces, timing and I²C cancellation investigation](docs/epr-bringup.md).
+
+The BLE experiment is also built, linted and audited in CI. Hardware GATT tests
+require a connected Pinecil and a Bluetooth adapter and are run separately.

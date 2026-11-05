@@ -31,6 +31,13 @@ def audit(path, fpu=False, probes=False):
         for pos in range(sh[4], sh[4]+sh[5], sh[9]):
             n, value, *_ = struct.unpack_from("<IIIBBH", data, pos)
             syms[name(table, n)] = value
+    if path.name == "ble":
+        assert 0x22014000 <= syms["__data_start"] <= syms["__bss_end"] <= 0x22020000, "BLE calibration overlaps live RAM"
+        assert 0x22020000 <= syms["__stack_bottom"] < syms["__stack_top"] <= 0x22024000
+        for hot in ("rwble_isr", "rwip_schedule", "lld_evt_end"):
+            assert 0x22014000 <= syms[hot] < 0x22020000, (hot, "not in ITCM")
+        assert not any(s.startswith(("xTask", "vTask", "xQueue", "vQueue", "pvPort")) for s in syms), "RTOS symbol in BLE image"
+        assert not any(n.startswith((".blerom", ".retention", ".tcm_data")) for n in sections), "uncopied vendor orphan section"
     flash = ".bootheader" in sections
     tcm_start = 0x22014000 if flash else 0x22010000
     assert syms["_start"] == tcm_start
@@ -88,7 +95,7 @@ def audit(path, fpu=False, probes=False):
     sh = sections[".vectors"]
     vectors = struct.unpack_from("<80I", data, sh[4])
     assert sh[5] == 320
-    irq_sources = (3,7,41,45,48,50,52,53,60)
+    irq_sources = (3,7,41,45,48,50,52,53,60,72)
     assert all(vectors[i] == syms["bl706_irq_entry"] for i in irq_sources)
     assert all(v == syms["bl706_fatal_trap"] for i,v in enumerate(vectors) if i not in irq_sources)
     atomic = []

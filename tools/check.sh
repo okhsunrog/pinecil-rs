@@ -17,3 +17,8 @@ cargo build --release --locked --example hardware-check
 uv run --no-project tools/audit_elf.py
 uv run --no-project tools/audit_elf.py target/riscv32imfc-unknown-none-elf/release/examples/hardware-check
 uv run --no-project tools/test_flash_image.py target/riscv32imfc-unknown-none-elf/release/pinecil-rs
+
+cargo clippy --release --locked --features ble --example ble -- -D warnings
+cargo build --release --locked --features ble --example ble
+uv run --no-project tools/audit_elf.py target/riscv32imfc-unknown-none-elf/release/examples/ble
+uv run --no-project tools/test_flash_image.py target/riscv32imfc-unknown-none-elf/release/examples/ble
