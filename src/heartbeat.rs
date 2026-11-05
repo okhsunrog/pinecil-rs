@@ -33,6 +33,17 @@ pub async fn run(mut log: Logger) {
         }
         #[cfg(not(feature = "pd-diagnostics"))]
         let _ = writeln!(log, "heartbeat tick={tick}");
+        #[cfg(feature = "ble")]
+        if tick.is_multiple_of(5) {
+            let m = bl706_ble::take_metrics();
+            log::info!(
+                "BLE irq={} irq_max_us={} schedule_max_us={} wake_max_us={}",
+                m.interrupts,
+                m.max_interrupt_us,
+                m.max_schedule_us,
+                m.max_wake_to_worker_us
+            );
+        }
         #[cfg(feature = "pd-diagnostics")]
         pd_trace::profile(1, start);
         tick = tick.wrapping_add(1);

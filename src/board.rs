@@ -36,6 +36,8 @@ impl core::fmt::Write for Logger {
 }
 
 pub struct Board {
+    #[cfg(feature = "ble")]
+    pub ble: (bl706_ble::NativeTransport, bl706_ble::Runner),
     pub software_interrupt: bl706_hal::executor::InterruptToken,
     pub log: Logger,
     pub heater_off: gpio::Output<21>,
@@ -68,7 +70,8 @@ pub fn board() -> Board {
         log::set_max_level_racy(log::LevelFilter::Info);
     }
     rtt_target::rprintln!("Pinecil Rust firmware: XIP + FPU + EPR; initializing HAL");
-    let p = bl706_hal::init_with_config(bl706_hal::clock::Config::pinecil_v2_144mhz())
+    #[allow(unused_mut)]
+    let mut p = bl706_hal::init_with_config(bl706_hal::clock::Config::pinecil_v2_144mhz())
         .expect("Pinecil clock initialization failed");
     log::info!(
         "Clocks: CPU {} MHz, bus {} MHz, flash {} MHz",
@@ -77,6 +80,16 @@ pub fn board() -> Board {
         p.clocks.flash_hz() / 1_000_000
     );
     let heater_off = p.pins.p21.into_output(false);
+    #[cfg(feature = "ble")]
+    let ble = {
+        // RF calibration temporarily owns IRQ3 and analog hardware. Complete
+        // it before the PD executor starts and before configuring ADC/I2C.
+        bl706_hal::enable_interrupts();
+        // SAFETY: the BLE linker reserves RF scratch/exchange RAM; this is the
+        // sole radio/TRNG owner, XTAL32M is running, and IRQ3 is still unused.
+        unsafe { bl706_ble::initialize(p.radio, &mut p.software_interrupt) }
+            .expect("BLE controller initialization failed")
+    };
     // Pinecil's BL706 has embedded flash and no PSRAM. SDK System_Init routes
     // GPIO23..28 to SF/PSRAM pads; without this GPIO25/28 do not see the keys.
     bl706_hal::pac::GLB
@@ -100,6 +113,8 @@ pub fn board() -> Board {
     let mut i2c = I2c::new(p.i2c, p.pins.p10, p.pins.p11, p.clocks);
     i2c.set_frequency(p.clocks, 300_000).unwrap();
     let board = Board {
+        #[cfg(feature = "ble")]
+        ble,
         software_interrupt: p.software_interrupt,
         log: Logger,
         heater_off,

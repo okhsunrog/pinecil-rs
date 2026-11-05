@@ -6,11 +6,17 @@ Rust 2024 / Embassy firmware for **Pinecil V2**, powered by the Bouffalo BL706.
 The firmware boots from SPI flash, executes code through XIP, uses the
 single-precision hardware FPU, and exposes logs over RTT through JTAG.
 
+The default firmware runs BLE alongside the UI, measurements and USB-PD.
+It uses the official peripheral-only controller without FreeRTOS, with an
+Embassy worker and Trouble. See [BLE setup, GATT test and limits](docs/ble.md).
+
 The current application includes:
 
 - A 96×16 OLED UI using async [`ssd1306`](https://crates.io/crates/ssd1306)
   and [`embedded-graphics`](https://crates.io/crates/embedded-graphics).
 - Async GPIO buttons with Embassy debounce and hold timers.
+- BLE advertising and a read/write/notify counter service. Application settings
+  and telemetry are not yet mapped to GATT characteristics.
 - Read-only ADC estimates of input voltage, handle temperature and tip
   temperature, with raw counts and faults logged over RTT.
 - USB-PD sink negotiation through [`fusb302b`](https://github.com/okhsunrog/fusb302b)
@@ -29,6 +35,10 @@ interrupts can preempt PD. This addresses the missed EPR response deadlines
 seen with the earlier shared thread executor. Hardware measurements and the
 remaining recoverable OLED FIFO fault are documented in the
 [timing investigation](docs/pd-scheduling.md).
+
+Radio IRQ72 preempts thread tasks; the BLE controller worker and Trouble host run
+on the thread executor. RF calibration finishes before ADC/I2C initialization
+and before PD takes ownership of software IRQ3.
 
 Application state and input handling run independently of OLED drawing and
 recovery. PD and application snapshots use multi-reader watches; a busy display
@@ -100,7 +110,7 @@ cd pinecil-rs
 ### With Nix
 
 The [development shell](flake.nix) supplies the pinned Rust toolchain, Python,
-uv, Git, LLVM and OpenOCD:
+uv, Git, GNU binutils, LLVM and OpenOCD:
 
 ```sh
 nix develop
@@ -255,22 +265,28 @@ records the evidence, limitations and isolated test procedure.
 | Physical flash offset `0x0000` | ROM boot header with CRC/hash fields |
 | Physical flash offset `0x1000` | Application payload |
 | XIP at `0x23000000` | Application code and read-only data |
-| ITCM starting at `0x22014000` | RAM-resident startup, trap entry and vector sections |
-| OCRAM starting at `0x22020000` | Initialized data, BSS and 8 KiB stack |
+| ITCM `0x22014000..0x22020000` | Startup, trap/vector sections, urgent BLE code and the first data/BSS portion |
+| Lower OCRAM `0x22020000..0x22024000` | Remaining data/BSS |
+| OCRAM `0x22024000..0x22028000` | Reserved RF calibration scratch |
+| OCRAM `0x22028000..0x2202a000` | 8 KiB stack |
+| OCRAM `0x2202a000..0x2202e000` | Optional diagnostic trace buffers |
+| OCRAM `0x2202e000..0x22030000` | BLE exchange memory |
 
-The application owns [pinecil.x](pinecil.x), the board setup, UI/PD policy,
+The application owns [pinecil-ble.x](pinecil-ble.x), the board setup, UI/PD policy,
 Cargo runner and [boot-header preparation](tools/flash_image.py). The boot header
 selects Dual Output reads (1-1-2, command `0x3B`) and disables cache burst wrap,
 matching the mode in this board's stock header. After conservative ROM startup,
 the firmware selects a 144 MHz CPU, 72 MHz bus and 48 MHz flash clock.
 See [clock configuration and hardware checks](docs/clocks.md) for the sources,
 transition sequence and validation scope.
+The optional build without BLE uses [pinecil.x](pinecil.x) and the original
+OCRAM layout: `cargo run --release --no-default-features --features fpu`.
 
 ## Pinned firmware dependencies
 
 | Component | Source and validated revision | Role |
 |---|---|---|
-| `bl706-hal` / `bl706-pac` | [bl706-embassy](https://github.com/okhsunrog/bl706-embassy), [preemptible software executor](https://github.com/okhsunrog/bl706-embassy/commit/75b485167197a9d5aeb53e1d64936b861889aa08) | Startup, interrupts, FPU context, peripherals and Embassy integration |
+| `bl706-hal` / `bl706-pac` / `bl706-ble` | [bl706-embassy](https://github.com/okhsunrog/bl706-embassy), [native BLE port merged into main](https://github.com/okhsunrog/bl706-embassy/commit/1457dd6b21c3f43a3daa822076499f4581c1c491) | Startup, interrupts, FPU context, peripherals, radio controller and Embassy integration |
 | `fusb302b` | [0.2.0 on crates.io](https://crates.io/crates/fusb302b/0.2.0), [release source](https://github.com/okhsunrog/fusb302b/tree/v0.2.0) | Async FUSB302B PD PHY |
 | `usbpd` / `usbpd-traits` | [official 3.1.0 revision](https://github.com/elagil/usbpd/commit/b1f0bb9720e362039ac5e5a511199c828da26c04) | PD policy engine, including EPR |
 
@@ -326,3 +342,8 @@ Hardware results and diagnostic history:
 - [Flash, OLED, buttons, XIP and FPU validation](docs/validation.md).
 - [Board schematic / IronOS comparison and SPR bring-up](docs/pd-audit.md).
 - [28 V EPR traces, timing and I²C cancellation investigation](docs/epr-bringup.md).
+
+- [Combined BLE, UI, measurements and 28 V EPR validation](docs/ble-integration.md).
+
+The default BLE image and standalone example are built, linted and audited in CI. Hardware GATT tests
+require a connected Pinecil and a Bluetooth adapter and are run separately.

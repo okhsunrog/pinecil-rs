@@ -59,6 +59,6 @@ Pinecil V2 BL706, Grapple Probe Pico/JTAG, Type-A USB power, heater GPIO21 held 
   reported ADC errors and the heater disabled.
 
 [Final register and test state](clocks-hardware.json) records the measurements.
-These tests establish operation on this board at room conditions, not a voltage/
-temperature qualification or PD/BLE concurrency result. No 28 V retest or manual
-cold power cycle was performed as part of this clock change.
+These initial clock-only tests establish operation on this board at room
+conditions, not a voltage/temperature qualification. Later charger-powered
+startup and combined 28 V PD/BLE/UI results are in [ble-integration.md](ble-integration.md).

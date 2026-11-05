@@ -6,7 +6,7 @@ import subprocess
 
 root = Path(__file__).resolve().parents[1]
 metadata = json.loads(subprocess.check_output(
-    ["cargo", "metadata", "--locked", "--format-version", "1"],
+    ["cargo", "metadata", "--locked", "--all-features", "--format-version", "1"],
     cwd=root, text=True,
 ))
 local = [

@@ -8,6 +8,17 @@ static CHANNEL: critical_section::Mutex<RefCell<Option<rtt_target::UpChannel>>> 
     critical_section::Mutex::new(RefCell::new(None));
 
 pub fn init_channel(channel: rtt_target::UpChannel) {
+    #[cfg(feature = "ble")]
+    for record in &PD_TRACE {
+        // This buffer lives in a dedicated NOLOAD region above RF scratch.
+        // Initialize it before BLE calibration or any PD task can run.
+        record.start_us.store(0, Relaxed);
+        record.end_us.store(0, Relaxed);
+        record.metadata.store(0, Relaxed);
+        for word in &record.data {
+            word.store(0, Relaxed);
+        }
+    }
     critical_section::with(|cs| *CHANNEL.borrow_ref_mut(cs) = Some(channel));
 }
 
@@ -77,6 +88,7 @@ impl Record {
     }
 }
 #[unsafe(no_mangle)]
+#[cfg_attr(feature = "ble", unsafe(link_section = ".pd_trace"))]
 pub static PD_TRACE: [Record; 256] = [const { Record::new() }; 256];
 #[unsafe(no_mangle)]
 pub static PD_TRACE_COUNT: AtomicU32 = AtomicU32::new(0);

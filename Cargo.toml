@@ -7,15 +7,19 @@ publish = false
 description = "Embassy application firmware for Pinecil V2 / BL706"
 
 [features]
-default = ["fpu"]
+default = ["fpu", "ble"]
+ble-diagnostics = ["ble"]
+ble = ["fpu", "dep:bl706-ble", "dep:bt-hci", "dep:trouble-host"]
 fpu = ["bl706-hal/fpu"]
 pd-diagnostics = []
 pd-manual-start = ["pd-diagnostics"]
 
 [dependencies]
+bt-hci = { version = "0.10", default-features = false, optional = true }
 embassy-futures = { version = "0.1.2", default-features = false }
 embassy-sync = { version = "0.8.0", default-features = false }
 heapless = "0.9.3"
+trouble-host = { version = "0.8", default-features = false, features = ["peripheral", "gatt", "derive", "default-packet-pool", "default-packet-pool-size-4", "default-packet-pool-mtu-64", "log"], optional = true }
 uom = { version = "0.39.0", package = "uom-ng", default-features = false, features = ["si", "u32"] }
 usbpd = { version = "3.1.0", default-features = false, git = "https://github.com/elagil/usbpd", rev = "b1f0bb9720e362039ac5e5a511199c828da26c04", features = ["epr", "log"] }
 
@@ -34,7 +38,8 @@ panic = "abort"
 panic = "abort"
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
-bl706-hal = { version = "0.1.0", features = ["flash"], git = "https://github.com/okhsunrog/bl706-embassy", rev = "a2ea3f3bbd4d411917a20b337cb5390b3a0ccc2e" }
+bl706-ble = { git = "https://github.com/okhsunrog/bl706-embassy", rev = "1457dd6b21c3f43a3daa822076499f4581c1c491", version = "0.1.0", features = ["controller"], optional = true }
+bl706-hal = { version = "0.1.0", features = ["flash"], git = "https://github.com/okhsunrog/bl706-embassy", rev = "1457dd6b21c3f43a3daa822076499f4581c1c491" }
 critical-section = "1.2.0"
 embassy-embedded-hal = "0.6.0"
 embassy-executor = { version = "0.10.0", default-features = false }
@@ -46,3 +51,7 @@ log = { version = "0.4.35", features = ["release_max_level_info"] }
 rtt-target = "0.6.2"
 ssd1306 = { version = "0.10.0", features = ["async"] }
 static_cell = "2.1.1"
+
+[[example]]
+name = "ble"
+required-features = ["ble"]

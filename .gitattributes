@@ -1,0 +1,2 @@
+# Patch context preserves upstream source whitespace.
+docs/ble-sdk-fixture.patch -whitespace

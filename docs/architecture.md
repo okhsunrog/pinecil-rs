@@ -28,6 +28,7 @@ ADC / heater-off controller -- Measurements watch -->|
 | `pd.rs` / `power.rs` | Own the FUSB302B/PD engine and select an allowed power contract. |
 | `control.rs` / `sensors.rs` | Own ADC and the heater-off output; acquire independent sensor scans and convert nominal readings. |
 | `heartbeat.rs` | Emits liveness diagnostics independently of acquisition. |
+| `ble.rs` | Owns the shared Trouble GATT counter service. Native radio ownership lives in the controller worker; GATT writes do not change application settings or heater state. |
 
 The controller is read-only and holds the heater output low. The setpoint is
 UI state only. Future regulation must receive settings and power status
@@ -61,7 +62,8 @@ measurement estimate; actual heater current/consumption is not measured.
 
 ## Scheduling and bus access
 
-Buttons, application, controller, display and heartbeat run on the thread executor. The
+Buttons, application, ADC controller, display, heartbeat, native BLE worker and
+Trouble host run on the thread executor. Radio IRQ72 preempts these tasks. The
 application waits for input or power changes and performs only short state
 updates. It does not render, access I2C or wait for a display acknowledgement.
 
@@ -87,7 +89,8 @@ the 4 Hz async scans to complete without an ADC error. At 20 V SPR, a simultaneo
 20-second KM003C capture agreed with measured VIN within about 0.3% on average.
 See the [acquisition contract and limits](measurements.md).
 The earlier hardware results in [PD scheduling](pd-scheduling.md) apply to the
-previous image. Cold boot, button/menu/brightness stress and simultaneous
-PD/ADC capture at 28 V EPR remain separate checks for the new image. Recoverable
-OLED FIFO errors were observed during this session; ADC completion does not
-establish their absence.
+previous image. The [combined BLE firmware session](ble-integration.md) records
+the later charger-powered startup, 28 V EPR maintenance, GATT traffic and manual
+button/menu/measurement-page stress. Recoverable OLED FIFO errors were observed
+in earlier sessions; one successful stress run does not establish long-term
+absence of those faults.

@@ -33,6 +33,18 @@ async fn application() {
     .await;
 }
 
+#[cfg(feature = "ble")]
+#[embassy_executor::task]
+async fn ble_controller(mut runner: bl706_ble::Runner) {
+    runner.run().await;
+}
+
+#[cfg(feature = "ble")]
+#[embassy_executor::task]
+async fn ble_host(transport: bl706_ble::NativeTransport) {
+    pinecil_rs::ble::run(transport, |_| {}).await;
+}
+
 #[unsafe(no_mangle)]
 extern "C" fn __bl706_main() -> ! {
     let b = board::board();
@@ -43,6 +55,11 @@ extern "C" fn __bl706_main() -> ! {
         .start(b.software_interrupt)
         .spawn(pd::run(I2cDevice::new(bus), b.pd_irq).unwrap());
     EXECUTOR.init(bl706_hal::Executor::new()).run(|s| {
+        #[cfg(feature = "ble")]
+        {
+            s.spawn(ble_controller(b.ble.1).unwrap());
+            s.spawn(ble_host(b.ble.0).unwrap());
+        }
         s.spawn(heartbeat::run(b.log).unwrap());
         s.spawn(control::run(b.adc, b.heater_off, b.tip_probe).unwrap());
         s.spawn(buttons::plus(b.key_plus).unwrap());
