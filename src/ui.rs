@@ -20,6 +20,7 @@ pub enum ButtonEvent {
 pub enum Screen {
     Main,
     Brightness,
+    Measurements,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,11 +47,16 @@ impl Ui {
         match event {
             ButtonEvent::Long(Button::Plus) => {
                 self.screen = match self.screen {
-                    Screen::Main => Screen::Brightness,
+                    Screen::Main | Screen::Measurements => Screen::Brightness,
                     Screen::Brightness => Screen::Main,
                 };
             }
-            ButtonEvent::Long(Button::Minus) => {}
+            ButtonEvent::Long(Button::Minus) => {
+                self.screen = match self.screen {
+                    Screen::Measurements => Screen::Main,
+                    _ => Screen::Measurements,
+                };
+            }
             ButtonEvent::Short(button) => match self.screen {
                 Screen::Main => {
                     self.setpoint_c = match button {
@@ -64,6 +70,7 @@ impl Ui {
                         Button::Minus => self.brightness_index.saturating_sub(1),
                     };
                 }
+                Screen::Measurements => {}
             },
         }
         *self != previous
@@ -133,10 +140,18 @@ mod tests {
     }
 
     #[test]
-    fn ignored_long_minus_preserves_both_pages() {
+    fn long_minus_toggles_measurements_without_changing_settings() {
         let mut ui = Ui::default();
-        assert!(!ui.handle(ButtonEvent::Long(Button::Minus)));
+        assert!(ui.handle(ButtonEvent::Long(Button::Minus)));
+        assert_eq!(ui.screen, Screen::Measurements);
+        assert!(!ui.handle(ButtonEvent::Short(Button::Plus)));
+        assert!(!ui.handle(ButtonEvent::Short(Button::Minus)));
+        assert!(ui.handle(ButtonEvent::Long(Button::Minus)));
+        assert_eq!(ui.screen, Screen::Main);
         ui.handle(ButtonEvent::Long(Button::Plus));
-        assert!(!ui.handle(ButtonEvent::Long(Button::Minus)));
+        assert!(ui.handle(ButtonEvent::Long(Button::Minus)));
+        assert_eq!(ui.screen, Screen::Measurements);
+        assert_eq!(ui.setpoint_c, 300);
+        assert_eq!(ui.contrast(), 26);
     }
 }

@@ -1,6 +1,6 @@
 //! Application state and event processing, independent of display and GPIO I/O.
 
-use embassy_futures::select::{Either, select};
+use embassy_futures::select::{Either3, select3};
 use embassy_sync::{
     blocking_mutex::raw::RawMutex,
     channel::Channel,
@@ -9,6 +9,7 @@ use embassy_sync::{
 
 use crate::{
     power::PowerStatus,
+    sensors::Measurements,
     ui::{ButtonEvent, Ui},
 };
 
@@ -24,20 +25,23 @@ pub type StateReceiver<'a, M> = Receiver<'a, M, AppState, 3>;
 pub struct AppState {
     pub ui: Ui,
     pub power: PowerStatus,
+    pub measurements: Measurements,
 }
 
 /// Owns UI state and consumes input even while the display is busy or offline.
 /// Publishing replaces the previous snapshot without waiting for any reader.
 /// Intermediate states may be skipped; button events remain ordered in a queue.
-pub async fn run<M: RawMutex, const N: usize>(
+pub async fn run<M: RawMutex, const N: usize, const K: usize>(
     buttons: &ButtonEvents<M>,
     mut power: Receiver<'_, M, PowerStatus, N>,
+    mut measurements: Receiver<'_, M, Measurements, K>,
     snapshots: &StateWatch<M>,
 ) -> ! {
     let mut state = AppState {
         ui: Ui::default(),
         // Read the latest contract even if PD initialized before this task.
         power: power.get().await,
+        measurements: measurements.get().await,
     };
     let sender = snapshots.sender();
     sender.send(state);
@@ -45,9 +49,10 @@ pub async fn run<M: RawMutex, const N: usize>(
     loop {
         let previous = state;
         // Observe ready power updates before draining queued button events.
-        match select(power.changed(), buttons.receive()).await {
-            Either::First(status) => state.power = status,
-            Either::Second(event) => {
+        match select3(power.changed(), measurements.changed(), buttons.receive()).await {
+            Either3::First(status) => state.power = status,
+            Either3::Second(frame) => state.measurements = frame,
+            Either3::Third(event) => {
                 state.ui.handle(event);
             }
         }
@@ -80,9 +85,15 @@ mod tests {
     fn stalled_display_does_not_block_buttons_or_power_updates() {
         let buttons = ButtonEvents::<NoopRawMutex>::new();
         let power = Watch::<NoopRawMutex, _, 3>::new_with(PowerStatus::Waiting);
+        let measurements = Watch::<NoopRawMutex, _, 3>::new_with(Measurements::WAITING);
         let snapshots = StateWatch::new();
         let mut display = snapshots.receiver().unwrap();
-        let mut application = pin!(run(&buttons, power.receiver().unwrap(), &snapshots));
+        let mut application = pin!(run(
+            &buttons,
+            power.receiver().unwrap(),
+            measurements.receiver().unwrap(),
+            &snapshots
+        ));
         drive(application.as_mut());
 
         // Do not poll the display while more events than the queue can hold
@@ -120,10 +131,16 @@ mod tests {
             mv: 20_000,
             ma: 1_500,
         });
+        let measurements = Watch::<NoopRawMutex, _, 3>::new_with(Measurements::WAITING);
         let snapshots = StateWatch::new();
         let mut display = snapshots.receiver().unwrap();
         let mut telemetry = snapshots.receiver().unwrap();
-        let mut application = pin!(run(&buttons, power.receiver().unwrap(), &snapshots));
+        let mut application = pin!(run(
+            &buttons,
+            power.receiver().unwrap(),
+            measurements.receiver().unwrap(),
+            &snapshots
+        ));
         drive(application.as_mut());
         assert_eq!(display.try_get().unwrap().power, power.try_get().unwrap());
 
@@ -146,15 +163,73 @@ mod tests {
     fn ignored_input_does_not_request_a_redraw() {
         let buttons = ButtonEvents::<NoopRawMutex>::new();
         let power = Watch::<NoopRawMutex, _, 1>::new_with(PowerStatus::Waiting);
+        let measurements = Watch::<NoopRawMutex, _, 3>::new_with(Measurements::WAITING);
         let snapshots = StateWatch::new();
         let mut display = snapshots.receiver().unwrap();
-        let mut application = pin!(run(&buttons, power.receiver().unwrap(), &snapshots));
+        let mut application = pin!(run(
+            &buttons,
+            power.receiver().unwrap(),
+            measurements.receiver().unwrap(),
+            &snapshots
+        ));
         drive(application.as_mut());
         display.try_get().unwrap();
 
-        buttons.try_send(ButtonEvent::Long(Button::Minus)).unwrap();
+        for _ in 0..30 {
+            buttons.try_send(ButtonEvent::Short(Button::Plus)).unwrap();
+            drive(application.as_mut());
+        }
+        display.try_get().unwrap();
+        buttons.try_send(ButtonEvent::Short(Button::Plus)).unwrap();
         power.sender().send(PowerStatus::Waiting);
         drive(application.as_mut());
         assert!(display.try_changed().is_none());
+    }
+
+    #[test]
+    fn sensor_fault_replaces_old_temperature_without_losing_other_state() {
+        use crate::sensors::{Reading, SensorFault};
+
+        let buttons = ButtonEvents::<NoopRawMutex>::new();
+        let contract = PowerStatus::Contract {
+            mv: 28_000,
+            ma: 3_000,
+        };
+        let power = Watch::<NoopRawMutex, _, 1>::new_with(contract);
+        let measurements = Watch::<NoopRawMutex, _, 1>::new_with(Measurements::WAITING);
+        let snapshots = StateWatch::new();
+        let mut display = snapshots.receiver().unwrap();
+        let mut application = pin!(run(
+            &buttons,
+            power.receiver().unwrap(),
+            measurements.receiver().unwrap(),
+            &snapshots
+        ));
+        drive(application.as_mut());
+        let good = Measurements {
+            sampled_at_ms: 1,
+            input_mv: Reading::Value(28_000),
+            handle_centi_c: Reading::Value(2500),
+            tip_centi_c: Reading::Value(2500),
+            ..Measurements::WAITING
+        };
+        measurements.sender().send(good);
+        buttons.try_send(ButtonEvent::Short(Button::Plus)).unwrap();
+        drive(application.as_mut());
+        assert_eq!(display.try_get().unwrap().measurements, good);
+
+        // Keep the display idle while a later sample reports a tip failure.
+        let failed = Measurements {
+            sampled_at_ms: 2,
+            tip_centi_c: Reading::Fault(SensorFault::Saturated),
+            adc_errors: 1,
+            ..good
+        };
+        measurements.sender().send(failed);
+        drive(application.as_mut());
+        let latest = display.try_changed().unwrap();
+        assert_eq!(latest.measurements, failed);
+        assert_eq!(latest.ui.setpoint_c, 305);
+        assert_eq!(latest.power, contract);
     }
 }

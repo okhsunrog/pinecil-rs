@@ -3,6 +3,7 @@
 
 mod board;
 mod buttons;
+mod control;
 mod display;
 mod heartbeat;
 mod pd;
@@ -23,7 +24,13 @@ pub type SharedI2c = I2cDevice<'static, CriticalSectionRawMutex, I2c>;
 
 #[embassy_executor::task]
 async fn application() {
-    app::run(&buttons::EVENTS, pd::STATUS.receiver().unwrap(), &APP_STATE).await;
+    app::run(
+        &buttons::EVENTS,
+        pd::STATUS.receiver().unwrap(),
+        control::MEASUREMENTS.receiver().unwrap(),
+        &APP_STATE,
+    )
+    .await;
 }
 
 #[unsafe(no_mangle)]
@@ -36,7 +43,8 @@ extern "C" fn __bl706_main() -> ! {
         .start(b.software_interrupt)
         .spawn(pd::run(I2cDevice::new(bus), b.pd_irq).unwrap());
     EXECUTOR.init(bl706_hal::Executor::new()).run(|s| {
-        s.spawn(heartbeat::run(b.log, b.heater_off).unwrap());
+        s.spawn(heartbeat::run(b.log).unwrap());
+        s.spawn(control::run(b.adc, b.heater_off, b.tip_probe).unwrap());
         s.spawn(buttons::plus(b.key_plus).unwrap());
         s.spawn(buttons::minus(b.key_minus).unwrap());
         s.spawn(application().unwrap());

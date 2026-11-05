@@ -11,14 +11,16 @@ The current application includes:
 - A 96×16 OLED UI using async [`ssd1306`](https://crates.io/crates/ssd1306)
   and [`embedded-graphics`](https://crates.io/crates/embedded-graphics).
 - Async GPIO buttons with Embassy debounce and hold timers.
+- Read-only ADC estimates of input voltage, handle temperature and tip
+  temperature, with raw counts and faults logged over RTT.
 - USB-PD sink negotiation through [`fusb302b`](https://github.com/okhsunrog/fusb302b)
   and [`usbpd`](https://github.com/elagil/usbpd): 20 V SPR followed by 28 V EPR
   when offered, with a 3 A request limit. Otherwise it uses 5 V.
 - A Cargo runner that prepares the boot header, programs flash with readback
   verification, resets the core and attaches RTT.
 
-**Heater control and temperature measurement are not implemented.** GPIO21 is
-held low, the display shows OFF, and the setpoint is UI state only. Flashing
+**Heating is not implemented.** The read-only controller owns GPIO21 and
+holds it low; the display shows OFF, and the setpoint is UI state only. Flashing
 this project replaces the firmware already installed on the iron, including
 IronOS. Hardware validation has been performed with the heater off.
 
@@ -202,6 +204,12 @@ The ordinary ELF remains available for symbols and RTT decoding.
 | Short `+` / `-` | Change the displayed setpoint by 5 °C, within 150–450 °C |
 | Hold `+` for 700 ms | Open or close the LIGHT brightness menu |
 | Short `+` / `-` in LIGHT | Choose one of four brightness levels |
+| Hold `-` for 700 ms | Enter or leave the measurements page |
+
+The measurements page shows `IN` (ADC input-voltage estimate), `H` (handle
+temperature) and `TIP` (tip-temperature estimate). Short presses do not change
+settings on that page. Saturated/invalid sensors show an error instead of a
+stale temperature. See [conversion details and validation status](docs/measurements.md).
 
 The footer shows PD status, such as `PD 28V 3.0A`, or menu controls. A moving
 square indicates ongoing UI updates. The displayed current is the negotiated

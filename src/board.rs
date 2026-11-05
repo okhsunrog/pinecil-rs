@@ -1,7 +1,9 @@
+use bl706_hal::adc::{Adc, AnalogPin, Config as AdcConfig, GainCalibration};
 use bl706_hal::{gpio, i2c::I2c};
 use core::fmt::Write;
 
 pub struct Logger;
+pub type BoardAdc = Adc<(AnalogPin<18>, AnalogPin<19>, AnalogPin<20>)>;
 struct RttLog;
 static RTT_LOG: RttLog = RttLog;
 impl log::Log for RttLog {
@@ -37,6 +39,8 @@ pub struct Board {
     pub software_interrupt: bl706_hal::executor::InterruptToken,
     pub log: Logger,
     pub heater_off: gpio::Output<21>,
+    pub tip_probe: gpio::Input<24>,
+    pub adc: BoardAdc,
     pub i2c: I2c,
     pub oled_reset: gpio::Pin<3>,
     pub key_plus: gpio::Input<25>,
@@ -71,12 +75,31 @@ pub fn board() -> Board {
     bl706_hal::pac::GLB
         .GPIO_USE_PSRAM__IO()
         .modify(|r| r.0 |= 0x3f);
+    let gain_trim = GainCalibration::from_efuse_shadow();
+    log::info!("ADC gain trim: {:?}", gain_trim);
+    let adc = Adc::new(
+        p.adc,
+        (
+            p.pins.p18.into_analog(),
+            p.pins.p19.into_analog(),
+            p.pins.p20.into_analog(),
+        ),
+        p.clocks,
+        AdcConfig {
+            calibration: gain_trim.ok(),
+            ..Default::default()
+        },
+    );
     let mut i2c = I2c::new(p.i2c, p.pins.p10, p.pins.p11, p.clocks);
     i2c.set_frequency(p.clocks, 300_000).unwrap();
     let board = Board {
         software_interrupt: p.software_interrupt,
         log: Logger,
         heater_off,
+        // Leave the cartridge-resistance test circuit high-impedance. This
+        // stage measures temperature without injecting any probe current.
+        tip_probe: p.pins.p24.into_input(gpio::Pull::None),
+        adc,
         i2c,
         oled_reset: p.pins.p3,
         key_plus: p.pins.p25.into_input(gpio::Pull::Down),

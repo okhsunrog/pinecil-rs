@@ -1,18 +1,16 @@
 use crate::board::{Logger, banner};
 #[cfg(feature = "pd-diagnostics")]
 use crate::pd_trace;
-use bl706_hal::gpio;
 use core::fmt::Write;
 #[cfg(feature = "pd-diagnostics")]
 use embassy_time::Instant;
 use embassy_time::Timer;
 
 #[embassy_executor::task]
-pub async fn run(mut log: Logger, mut heater_off: gpio::Output<21>) {
+pub async fn run(mut log: Logger) {
     banner(&mut log, "UI: heater OFF");
     let mut tick = 0u32;
     loop {
-        heater_off.set_low();
         #[cfg(feature = "pd-diagnostics")]
         let start = Instant::now();
         #[cfg(feature = "pd-diagnostics")]

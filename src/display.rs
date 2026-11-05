@@ -19,21 +19,26 @@ use embedded_graphics::{
 use heapless::String;
 use pinecil_rs::app::{AppState, StateReceiver};
 use pinecil_rs::power::PowerStatus;
-use pinecil_rs::ui::{Screen, Ui};
+use pinecil_rs::sensors::{Reading, SensorFault};
+use pinecil_rs::ui::Screen;
 use ssd1306::{I2CDisplayInterface, Ssd1306Async, prelude::*};
 
 async fn render<D: DrawTarget<Color = BinaryColor>>(
     display: &mut D,
-    ui: &Ui,
+    state: &AppState,
     alive: bool,
-    power: PowerStatus,
 ) -> Result<(), D::Error> {
+    let AppState {
+        ui,
+        power,
+        measurements,
+    } = state;
     #[cfg(feature = "pd-diagnostics")]
     let prepare_start = Instant::now();
     display.clear(BinaryColor::Off)?;
     let mut top: String<24> = String::new();
     let mut power_text: String<32> = String::new();
-    match power {
+    match *power {
         PowerStatus::Waiting => power_text.push_str("PD WAIT HOLD+:MENU").unwrap(),
         PowerStatus::Requesting { mv } => write!(power_text, "PD {}V REQUEST", mv / 1000).unwrap(),
         PowerStatus::Contract { mv, ma } => write!(
@@ -54,6 +59,28 @@ async fn render<D: DrawTarget<Color = BinaryColor>>(
         Screen::Brightness => {
             write!(top, "LIGHT {}/4", ui.brightness_level()).unwrap();
             "+/- HOLD+:BACK"
+        }
+        Screen::Measurements => {
+            match measurements.tip_centi_c {
+                Reading::Value(temperature) => write!(top, "TIP {}C", temperature / 100).unwrap(),
+                Reading::Fault(SensorFault::Saturated) => top.push_str("TIP SAT").unwrap(),
+                Reading::Fault(_) => top.push_str("TIP ERR").unwrap(),
+                Reading::Pending => top.push_str("TIP ---").unwrap(),
+            }
+            power_text.clear();
+            match measurements.input_mv {
+                Reading::Value(mv) => {
+                    write!(power_text, "IN {}.{}V", mv / 1000, mv % 1000 / 100).unwrap()
+                }
+                _ => power_text.push_str("IN --.-V").unwrap(),
+            }
+            match measurements.handle_centi_c {
+                Reading::Value(temperature) => {
+                    write!(power_text, " H{}C", temperature / 100).unwrap()
+                }
+                _ => power_text.push_str(" H--C").unwrap(),
+            }
+            power_text.as_str()
         }
     };
     #[cfg(feature = "pd-diagnostics")]
@@ -111,6 +138,7 @@ pub async fn run(
     let mut next_refresh = Instant::now() + Duration::from_secs(1);
     let mut needs_init = true;
     let mut applied_contrast = None;
+    let mut last_frame: Option<(AppState, bool)> = None;
     loop {
         if needs_init {
             oled.reset(&mut reset, &mut embassy_time::Delay)
@@ -124,11 +152,13 @@ pub async fn run(
             }
             needs_init = false;
             applied_contrast = None;
+            last_frame = None;
             log::info!("OLED ready; heater OFF");
         }
         // Always use the latest snapshot after initialization or recovery.
         // State changes during a flush are coalesced, never queued as frames.
-        let AppState { ui, power } = snapshots.get().await;
+        let state = snapshots.get().await;
+        let ui = state.ui;
         if applied_contrast != Some(ui.contrast()) {
             if let Err(error) = oled
                 .set_brightness(Brightness::custom(0xf, ui.contrast()))
@@ -141,16 +171,27 @@ pub async fn run(
             }
             applied_contrast = Some(ui.contrast());
         }
-        #[cfg(feature = "pd-diagnostics")]
-        let render_start = Instant::now();
-        render(&mut oled, &ui, alive, power).await.unwrap();
-        #[cfg(feature = "pd-diagnostics")]
-        pd_trace::profile(4, render_start);
-        if let Err(error) = oled.flush().await {
-            log::warn!("OLED flush failed: {:?}; resetting display", error);
-            needs_init = true;
-            Timer::after_millis(250).await;
-            continue;
+        // Raw ADC changes do not redraw the main/brightness pages. Avoid
+        // adding OLED bus traffic just because measurements arrive at 4 Hz.
+        let redraw = last_frame.is_none_or(|(previous, previous_alive)| {
+            previous.ui != ui
+                || previous.power != state.power
+                || previous_alive != alive
+                || ui.screen == Screen::Measurements && previous.measurements != state.measurements
+        });
+        if redraw {
+            #[cfg(feature = "pd-diagnostics")]
+            let render_start = Instant::now();
+            render(&mut oled, &state, alive).await.unwrap();
+            #[cfg(feature = "pd-diagnostics")]
+            pd_trace::profile(4, render_start);
+            if let Err(error) = oled.flush().await {
+                log::warn!("OLED flush failed: {:?}; resetting display", error);
+                needs_init = true;
+                Timer::after_millis(250).await;
+                continue;
+            }
+            last_frame = Some((state, alive));
         }
         match select(snapshots.changed(), Timer::at(next_refresh)).await {
             Either::First(_) => {}
