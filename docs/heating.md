@@ -22,6 +22,7 @@ JBC gains or scaled-integer regulator.
 - IronOS [PWM/ADC scheduling](https://github.com/Ralim/IronOS/blob/c7413e0d2adfd43156510d4ccbd109cf352ca335/source/Core/BSP/Pinecilv2/IRQ.cpp),
   [carrier/ADC setup](https://github.com/Ralim/IronOS/blob/c7413e0d2adfd43156510d4ccbd109cf352ca335/source/Core/BSP/Pinecilv2/Setup.cpp),
   [resistance probe](https://github.com/Ralim/IronOS/blob/c7413e0d2adfd43156510d4ccbd109cf352ca335/source/Core/BSP/Pinecilv2/BSP.cpp),
+  [cartridge-aware PD selection](https://github.com/Ralim/IronOS/blob/c7413e0d2adfd43156510d4ccbd109cf352ca335/source/Core/Drivers/USBPD.cpp),
   [power calculation](https://github.com/Ralim/IronOS/blob/c7413e0d2adfd43156510d4ccbd109cf352ca335/source/Core/Src/power.cpp)
   and [regulation](https://github.com/Ralim/IronOS/blob/c7413e0d2adfd43156510d4ccbd109cf352ca335/source/Core/Threads/PIDThread.cpp).
 - loeti [async control task](https://github.com/elagil/loeti/blob/03a1d9e7467bc95e475958ad677118629686eec5/firmware/loeti/common/src/control/mod.rs)
@@ -92,6 +93,22 @@ maximum heating-window fraction, and measured VIN times the contract current
 less a 200 mA board margin. A valid 9..28 V contract is
 required; measured VIN must be 9..30 V and within 10% of it. There is no heating
 from an unnegotiated 5 V USB port.
+
+The carrier's on-window current is separately checked as `VIN/R`, rounded up,
+plus the 200 mA board margin. A small average-power request does not reduce
+this current: 28 V across 6.2 ohms draws approximately 4.5 A during the burst.
+An insufficient contract latches `CURRENT` before arming the output.
+
+PD selection uses the same cartridge load, allowing 5% source-voltage tolerance
+when choosing the highest suitable fixed PDO. An initial idle contract may
+precede the resistance probe; the policy reevaluates it after the result arrives.
+SPR stays capped at 3 A because this firmware does not discover cable-current
+rating in SPR. Successful EPR entry requires source qualification of a 5 A EPR
+cable (USB PD 3.2 section 6.4.10.1); EPR requests may then use up to 5 A, always
+bounded by the actual advertised PDO. The EPR operational PDP is 140 W, which
+describes the peak input capability; the initial heating limit remains 20 W.
+Changing a contract publishes `Requesting` before the transition, so the heater
+cannot use a previous valid contract while voltage is being changed.
 
 The board has no implemented heater-current feedback in this firmware. The
 power estimate does not measure instantaneous current or guarantee that every
@@ -168,6 +185,23 @@ entry, so reset-flag semantics and an independently timed watchdog interval are
 not claimed. Reprogramming with the previous watchdog armed also passed.
 
 The [structured hardware record](heating-hardware.json) pins the tested image.
-Bounded live heating, fault injection during heating and UI/BLE/PD coexistence
-with a hot tip are still pending. Earlier read-only ADC/PD/BLE results do not
-establish that live heater control works.
+The first bounded 5 W / 80 C run raised the nominal reading from about 31 C to
+77 C and reduced output near the target. All 77 live bursts completed by timer;
+maximum recorded lateness was 104 us, cancellation and ADC-error counts stayed
+zero. The request automatically returned OFF after eight seconds, followed by
+cooling. These are onboard estimates, not independently calibrated temperatures.
+
+The following 10 W / 150 C run failed about 3.4 seconds after its command: RTT
+recorded `PD hard reset`, target access disappeared, and a fresh OFF boot was
+observed. Before the reset, nominal temperature reached 97 C; BLE GATT read,
+write and one notification succeeded, but the connection then failed. This
+does not qualify combined heating/BLE operation. There was no external PD or
+voltage recorder attached, so reset initiation and its physical cause have not
+been established.
+
+Review exposed a separate concrete bug: the old controller allowed bursts
+requiring about 4.5 A under a 3 A contract because only average power was
+limited. The current guard, EPR current request and cartridge-aware selection
+above fix that error and have host tests. The new image still requires hardware
+qualification; fault injection during heating and sustained UI/BLE/PD
+coexistence remain pending.

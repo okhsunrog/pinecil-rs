@@ -54,6 +54,43 @@
     "watchdog_flag_at_hal_entry": false,
     "qualification": "controlled reset observation, not an independently measured timeout or verified reset-flag semantics"
   },
-  "live_heating": "pending",
+  "initial_live_heating": {
+    "five_watt_run": {
+      "limit_mw": 5000,
+      "target_c": 80,
+      "deadline_ms": 8000,
+      "nominal_initial_centi_c": 3060,
+      "nominal_highest_logged_centi_c": 7712,
+      "additional_completed_bursts": 77,
+      "cancelled_bursts": 0,
+      "maximum_recorded_lateness_us": 104,
+      "adc_errors": 0,
+      "automatic_off_observed": true,
+      "cooling_after_off_observed": true
+    },
+    "ten_watt_with_ble_run": {
+      "limit_mw": 10000,
+      "target_c": 150,
+      "command_target_us": 50904837,
+      "last_logged_sample_target_us": 53418720,
+      "last_logged_nominal_centi_c": 9734,
+      "hard_reset_callback_target_us": 54332827,
+      "result": "failed: PD hard reset followed by target loss and a new OFF boot",
+      "ble_read_write_and_one_notification": true,
+      "ble_session_completed": false,
+      "external_voltage_or_pd_recording": false,
+      "reset_initiator_and_physical_cause": "unproven"
+    },
+    "power_model_error_found": "old average-only budget allowed about 4.5 A bursts under a 28 V / 3 A contract"
+  },
+  "current_budget_fix": {
+    "on_window_current_guard": true,
+    "spr_request_ceiling_ma": 3000,
+    "epr_request_ceiling_ma": 5000,
+    "source_offer_limit_preserved": true,
+    "cartridge_aware_fixed_voltage_selection": true,
+    "host_tests_passed": true,
+    "hardware_qualification": "pending"
+  },
   "absolute_temperature_calibration": false
 }

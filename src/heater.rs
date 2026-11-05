@@ -3,7 +3,7 @@
 //! The controller requests energy in bounded PWM-carrier bursts. A separate
 //! timer ISR must end each burst; a new ADC frame is required before rearming.
 use crate::{
-    power::PowerStatus,
+    power::{PowerStatus, SUPPLY_MARGIN_MA, heater_on_current_ma},
     sensors::{Measurements, Reading},
 };
 
@@ -16,7 +16,6 @@ pub const MAX_CONTROL_GAP_MS: u64 = 250;
 /// Initial hardware qualification limit, independent of the PD contract.
 pub const MAX_POWER_MW: u32 = 20_000;
 pub const MAX_TARGET_C: u16 = 350;
-const SUPPLY_MARGIN_MA: u32 = 200;
 const MAX_HANDLE_CENTI_C: i32 = 6000;
 const MAX_TIP_CENTI_C: i32 = 42_000;
 
@@ -52,6 +51,7 @@ pub enum Fault {
     Timing,
     NoTip,
     NoPower,
+    SupplyCurrent,
     Voltage,
     HandleHot,
     TipHot,
@@ -66,6 +66,7 @@ impl Fault {
             Self::Timing => "TIMING",
             Self::NoTip => "TIP",
             Self::NoPower => "POWER",
+            Self::SupplyCurrent => "CURRENT",
             Self::Voltage => "VIN",
             Self::HandleHot => "HANDLE",
             Self::TipHot => "HOT",
@@ -247,6 +248,13 @@ impl Controller {
         if vin.abs_diff(mv) > mv / 10 || !(9000..=30_000).contains(&vin) {
             return self.trip(Fault::Voltage);
         }
+        // The board has no buck regulator. An 8 ms burst at 28 V / 6.2 ohm
+        // still draws about 4.5 A even if its average power is only 10 W.
+        if heater_on_current_ma(vin, resistance)
+            .is_none_or(|current| current + SUPPLY_MARGIN_MA > ma)
+        {
+            return self.trip(Fault::SupplyCurrent);
+        }
         let target = request.target_c.clamp(50, MAX_TARGET_C);
         if target != self.target_c {
             self.pi.integral_w = 0.0;
@@ -314,7 +322,7 @@ mod tests {
     };
     const POWER: PowerStatus = PowerStatus::Contract {
         mv: 28_000,
-        ma: 3000,
+        ma: 5000,
     };
     #[test]
     fn resistance_probe_removes_offset_and_linear_thermal_drift() {
@@ -386,6 +394,53 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn insufficient_on_window_current_trips_even_at_low_average_power() {
+        let mut c = Controller::default();
+        let limited = PowerStatus::Contract {
+            mv: 28_000,
+            ma: 3000,
+        };
+        let failed = c.update(100, REQUEST, &frame(100, 2500), limited, Ok(6200));
+        assert_eq!(failed.state, State::Fault(Fault::SupplyCurrent));
+        assert_eq!(failed.burst_us, 0);
+        assert_eq!(failed.power_mw, 0);
+        // More current does not silently clear a latched safety fault.
+        assert_eq!(
+            c.update(200, REQUEST, &frame(200, 2500), POWER, Ok(6200))
+                .state,
+            failed.state
+        );
+        c.update(300, Request::OFF, &frame(300, 2500), POWER, Ok(6200));
+        assert!(
+            c.update(400, REQUEST, &frame(400, 2500), POWER, Ok(6200))
+                .burst_us
+                > 0
+        );
+    }
+
+    #[test]
+    fn every_armed_burst_fits_the_measured_on_window_current_budget() {
+        for vin in [9000, 12000, 15000, 20000, 28000] {
+            for r in [4000, 6200, 8000] {
+                for ma in [1500, 3000, 5000] {
+                    let mut c = Controller::default();
+                    let mut f = frame(100, 2500);
+                    f.input_mv = Reading::Value(vin);
+                    let power = PowerStatus::Contract { mv: vin, ma };
+                    let status = c.update(100, REQUEST, &f, power, Ok(r));
+                    let required = (u64::from(vin) * 1000).div_ceil(u64::from(r)) + 200;
+                    if required > u64::from(ma) {
+                        assert_eq!(status.state, State::Fault(Fault::SupplyCurrent));
+                        assert_eq!(status.burst_us, 0);
+                    } else if status.burst_us > 0 {
+                        assert!(required <= u64::from(ma));
+                    }
+                }
+            }
+        }
+    }
     #[test]
     fn stale_repeated_future_and_delayed_samples_never_rearm() {
         for sample_ms in [100, 99, 500] {
@@ -441,7 +496,7 @@ mod tests {
             let vin = if tick < 600 { 20_000 } else { 28_000 };
             let mut f = frame(tick * 100, (temperature * 100.0) as i32);
             f.input_mv = Reading::Value(vin);
-            let power = PowerStatus::Contract { mv: vin, ma: 1500 };
+            let power = PowerStatus::Contract { mv: vin, ma: 5000 };
             let result = c.update(tick * 100, request, &f, power, Ok(8000));
             assert!(!matches!(result.state, State::Fault(_)));
             assert!(result.power_mw <= MAX_POWER_MW);

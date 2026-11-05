@@ -37,7 +37,17 @@ impl usbpd::timers::Timer for PdTimer {
 
 struct Policy {
     pending: Option<Choice>,
+    active: Option<(u32, u32)>,
+    evaluated_resistance: Option<u32>,
     epr_attempted: bool,
+}
+
+fn resistance() -> Option<u32> {
+    crate::control::MEASUREMENTS
+        .try_get()?
+        .heater
+        .resistance_mohm
+        .ok()
 }
 
 impl SinkDpm for Policy {}
@@ -62,7 +72,32 @@ impl DevicePolicyManager for Policy {
             );
             return Event::EnterEprMode(usbpd::units::Power::new::<watt>(EPR_OPERATIONAL_WATTS));
         }
-        core::future::pending().await
+        loop {
+            if let Some(r) = resistance()
+                && self.evaluated_resistance != Some(r)
+            {
+                // Evaluate once per new probe result. A Reject must not cause
+                // an immediate request loop every time the PE returns Ready.
+                self.evaluated_resistance = Some(r);
+                if let Some(choice) = choose(caps, Some(r))
+                    && self.active != Some((choice.mv, choice.ma))
+                {
+                    log::info!(
+                        "PD adapting to cartridge: {} mV {} mA",
+                        choice.mv,
+                        choice.ma
+                    );
+                    STATUS
+                        .sender()
+                        .send(PowerStatus::Requesting { mv: choice.mv });
+                    let request = choice.request;
+                    self.pending = Some(choice);
+                    return Event::RequestPower(request);
+                }
+            }
+            // Cancellation-safe; no bus ownership or borrowed ADC buffer.
+            Timer::after_millis(100).await;
+        }
     }
 
     async fn request(&mut self, caps: &SourceCapabilities) -> PowerSource {
@@ -85,12 +120,17 @@ impl DevicePolicyManager for Policy {
                 );
             }
         }
-        let Some(choice) = choose(caps) else {
+        let load = resistance();
+        let Some(choice) = choose(caps, load) else {
             log::error!("PD invalid source capabilities; no request sent");
             STATUS.sender().send(PowerStatus::Error);
             return core::future::pending().await;
         };
-        log::debug!("PD requesting {} mV {} mA", choice.mv, choice.ma);
+        self.evaluated_resistance = load;
+        log::info!("PD requesting {} mV {} mA", choice.mv, choice.ma);
+        STATUS
+            .sender()
+            .send(PowerStatus::Requesting { mv: choice.mv });
         let request = choice.request;
         self.pending = Some(choice);
         request
@@ -98,6 +138,7 @@ impl DevicePolicyManager for Policy {
 
     async fn transition_power(&mut self, _: &PowerSource) {
         if let Some(c) = self.pending.take() {
+            self.active = Some((c.mv, c.ma));
             // usbpd calls this only after Accept followed by PS_RDY.
             log::info!("PD contract ready: {} mV {} mA (PS_RDY)", c.mv, c.ma);
             STATUS
@@ -108,6 +149,8 @@ impl DevicePolicyManager for Policy {
 
     async fn hard_reset(&mut self) {
         self.pending = None;
+        self.active = None;
+        self.evaluated_resistance = None;
         self.epr_attempted = false;
         STATUS.sender().send(PowerStatus::Waiting);
         log::info!("PD hard reset: waiting for default power");
@@ -190,6 +233,8 @@ async fn run_inner(i2c: SharedI2c, irq: Input<16>) {
         driver,
         Policy {
             pending: None,
+            active: None,
+            evaluated_resistance: None,
             epr_attempted: false,
         },
     );

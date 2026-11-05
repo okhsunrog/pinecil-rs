@@ -23,8 +23,11 @@ The current application includes:
   timer-limited heater bursts, latched faults and a watchdog. Initial limits
   are 20 W estimated average power and a 350 C maximum setpoint.
 - USB-PD sink negotiation through [`fusb302b`](https://github.com/okhsunrog/fusb302b)
-  and [`usbpd`](https://github.com/elagil/usbpd): 20 V SPR followed by 28 V EPR
-  when offered, with a 3 A request limit. Otherwise it uses 5 V.
+  and [`usbpd`](https://github.com/elagil/usbpd): fixed SPR up to 20 V, then EPR
+  up to 28 V when offered. SPR requests are capped at 3 A; after successful EPR
+  cable qualification, EPR requests may use up to the offered 5 A. Cartridge
+  resistance determines the highest voltage whose on-window current fits the
+  contract; insufficient offers fall back to a lower voltage or idle 5 V.
 - A Cargo runner that prepares the boot header, programs flash with readback
   verification, resets the core and attaches RTT.
 
@@ -228,7 +231,7 @@ temperature) and `TIP` (tip-temperature estimate). Short presses do not change
 settings on that page. Saturated/invalid sensors show an error instead of a
 stale temperature. See [conversion details and validation status](docs/measurements.md).
 
-The footer shows PD status, such as `PD 28V 3.0A`, or menu controls. A moving
+The footer shows PD status, such as `PD 28V 5.0A`, or menu controls. A moving
 square indicates ongoing UI updates. The displayed current is the negotiated
 limit, not measured load current. `ON` / `REG` indicate heating/regulation;
 `ERR` indicates a latched controller fault. Menus keep the current heating
