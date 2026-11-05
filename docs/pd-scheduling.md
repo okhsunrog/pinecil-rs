@@ -89,11 +89,27 @@ four-byte tails took at most 1.680 ms. The longest PD poll was 23.959 ms,
 including preemption; per-poll trace serialization happens after that measurement.
 
 One OLED FIFO error at MCU time 93.662 s triggered display recovery without
-losing EPR. This remains an I2C latency issue to investigate; the executor does
+losing EPR. Its exact cause remains to be isolated; the executor does
 not eliminate every FIFO fault. ADC recorded 419,434 samples with 636 missing
 samples in six gaps (largest 408 ms), so it is not a gap-free voltage trace.
 Continuous RTT and KeepAlive/Ack traffic provide independent restart evidence.
-The normal build without binary instrumentation is the next hardware check.
+
+The normal build (without either diagnostic feature) was then programmed into
+flash with readback verification and cold-booted from the EPR source. Its
+420.070-second capture included 274.974 seconds above 27 V, including button
+and brightness-menu stress. There were 716 KeepAlive/Ack pairs and no voltage
+drop, Soft Reset or Hard Reset after the EPR transition. The final 162.451
+seconds of this capture ran with OpenOCD shut down and no debug session.
+ADC captured 420,049 samples; its only 24-sample gap preceded EPR attachment.
+The user confirmed normal display/buttons and no blanking or shutdown.
+
+RTT read before and after the passive interval contained consecutive heartbeat
+ticks 0 through 296, with no OLED error, panic or restart for the recorded EPR
+test. After the voltage capture had finished, the unread 4 KiB nonblocking RTT
+buffer filled: ticks 297–329 were dropped before the host resumed draining it.
+Ticks then continued at 330–344. This host-read gap is distinct from a restart.
+These bounded tests validate the new scheduling on this setup; they do not
+establish that every earlier intermittent I2C fault has been eliminated.
 
 ## Diagnostic records
 
