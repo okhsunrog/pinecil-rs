@@ -225,3 +225,32 @@ Only the BLE example's 144 MHz profile enables the required DLL outputs. This is
 an experiment command, not a general live-clock API for the normal application.
 A stalled timer still needs re-arming; changing SPI does not repair an already
 expired hardware target by itself.
+
+## Same-image recovery at 48 MHz
+
+Without reflashing or resetting that clock-sweep image, setting
+`BLE_FLASH_MHZ_REQUEST=48` changed SPI to 48 MHz. Halted PROGBUF readback confirmed
+`CLK_CFG2=0xff8f3910` (source 96 MHz, divider two, enabled). Re-arming the expired
+fine timer restored the already-running controller. With OpenOCD closed, the
+same all-XIP image then completed **10 full GATT read/write/notification cycles
+and 80 notifications**. A captured five-second window reported a 1093 us radio
+ISR maximum; these per-window samples are not a worst-case bound.
+
+The successful 48 MHz run does not erase the captured 4 MHz failure or certify
+all-XIP operation under arbitrary load. It supports the separate flash-latency
+variable identified by the C comparison. Keep urgent paths in ITCM, avoid long
+IRQ-masked formatting, and measure again before adding UI/PD workload. The
+normal example retains the existing conservative boot clock and ITCM layout;
+the live SPI command is confined to diagnostics.
+
+For RAM budgeting, the C fixture's linker map retained 60,546 bytes of controller
+`.text`/`.bleromro` and 6,448 bytes from RF: 66,994 bytes, about 65 KiB of code,
+including its C `arch_main.o`. This excludes debug information and writable
+state, and Rust garbage collection can produce a different exact size. It is
+substantially larger than the urgent ITCM subset; moving everything requires a
+new memory budget, not simply moving the archive into one linker section.
+
+After the experiment the previously verified normal Rust BLE image was restored
+with flash verification. Its boot payload remains the documented 206,048-byte
+image `e2b68167271c4759ffa4f3e6053670d474fd36023e898369918b8f376f15ec12`.
+The fault-injection image and C fixture were not left on the device.
