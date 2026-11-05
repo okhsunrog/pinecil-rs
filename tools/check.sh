@@ -18,6 +18,12 @@ uv run --no-project tools/audit_elf.py
 uv run --no-project tools/audit_elf.py target/riscv32imfc-unknown-none-elf/release/examples/hardware-check
 uv run --no-project tools/test_flash_image.py target/riscv32imfc-unknown-none-elf/release/pinecil-rs
 
+BLE_CODE_PLACEMENT=itcm cargo clippy --release --locked --features ble-diagnostics --example ble -- -D warnings
+BLE_CODE_PLACEMENT=itcm cargo build --release --locked --features ble-diagnostics --example ble
+uv run --no-project tools/audit_elf.py target/riscv32imfc-unknown-none-elf/release/examples/ble
+BLE_CODE_PLACEMENT=xip cargo build --release --locked --features ble-diagnostics --example ble
+uv run --no-project tools/audit_elf.py target/riscv32imfc-unknown-none-elf/release/examples/ble --ble-placement=xip
+
 cargo clippy --release --locked --features ble --example ble -- -D warnings
 cargo build --release --locked --features ble --example ble
 uv run --no-project tools/audit_elf.py target/riscv32imfc-unknown-none-elf/release/examples/ble

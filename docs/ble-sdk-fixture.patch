@@ -1,0 +1,245 @@
+diff --git a/components/network/ble/blecontroller/ble_inc/hci_onchip.h b/components/network/ble/blecontroller/ble_inc/hci_onchip.h
+index 726bd9e..c8487a5 100644
+--- a/components/network/ble/blecontroller/ble_inc/hci_onchip.h
++++ b/components/network/ble/blecontroller/ble_inc/hci_onchip.h
+@@ -66,6 +66,6 @@ typedef void (*bt_hci_recv_cb)(uint8_t pkt_type, uint16_t src_id, uint8_t *param
+ 
+ uint8_t bt_onchiphci_interface_init(bt_hci_recv_cb cb);
+ int8_t bt_onchiphci_send(uint8_t pkt_type, uint16_t dest_id, hci_pkt_struct *pkt);
+-uint8_t bt_onchiphci_hanlde_rx_acl(void *param, uint8_t *host_buf_data);
++uint8_t bt_onchiphci_handle_rx_acl(void *param, uint8_t *host_buf_data);
+ 
+ #endif
+diff --git a/components/network/ble/blestack/src/bl_hci_wrapper/bl_hci_wrapper.c b/components/network/ble/blestack/src/bl_hci_wrapper/bl_hci_wrapper.c
+index 60b391e..fdb6172 100644
+--- a/components/network/ble/blestack/src/bl_hci_wrapper/bl_hci_wrapper.c
++++ b/components/network/ble/blestack/src/bl_hci_wrapper/bl_hci_wrapper.c
+@@ -211,7 +211,7 @@ void bl_packet_to_host(uint8_t pkt_type, uint16_t src_id, uint8_t *param, uint8_
+         {
+             prio = false;
+             bt_buf_set_type(buf, BT_BUF_ACL_IN);
+-            tlt_len = bt_onchiphci_hanlde_rx_acl(param, buf_data);
++            tlt_len = bt_onchiphci_handle_rx_acl(param, buf_data);
+             break;
+         }
+         #endif
+diff --git a/components/platform/hosal/bl702_hal/bl_sys.c b/components/platform/hosal/bl702_hal/bl_sys.c
+index e7a3e2f..2cb752e 100644
+--- a/components/platform/hosal/bl702_hal/bl_sys.c
++++ b/components/platform/hosal/bl702_hal/bl_sys.c
+@@ -259,6 +259,8 @@ int bl_sys_default_active_config(void)
+ 
+     // Set all gpio pads in High-Z state (GPIO0 - GPIO31, jtag & cci pads excluded)
+     for(i=0; i<=31; i++){
++        /* Keep the Pinecil heater driven low throughout startup. */
++        if(i == 21) continue;
+         // jtag pins
+         if(jtag_group == 1){
+             if(i == 3 || i == 4 || i == 5 || i == 6){
+diff --git a/components/platform/soc/bl702/bl702/bfl_main.c b/components/platform/soc/bl702/bl702/bfl_main.c
+index e7fc3e7..0777274 100755
+--- a/components/platform/soc/bl702/bl702/bfl_main.c
++++ b/components/platform/soc/bl702/bl702/bfl_main.c
+@@ -1,3 +1,4 @@
++#include <bl_gpio.h>
+ #include <FreeRTOS.h>
+ #include <task.h>
+ #include <timers.h>
+@@ -291,6 +292,8 @@ void setup_heap()
+     vPortDefineHeapRegions(xHeapRegions);
+ }
+ 
++volatile unsigned SDK_STAGE;
++
+ static void system_early_init(void)
+ {
+ #ifdef SYS_BLOG_ENABLE
+@@ -299,7 +302,7 @@ static void system_early_init(void)
+ 
+     bl_irq_init();
+     bl_sec_init();
+-    hal_boot2_init();
++    /* Pinecil fixture boots directly, without SDK boot2 partitions. */
+ 
+ #ifdef SYS_DMA_ENABLE
+     hosal_dma_init();
+@@ -307,7 +310,11 @@ static void system_early_init(void)
+ 
+     /* To be added... */
+     /* board config is set after system is init*/
+-    hal_board_cfg(0);
++    {
++        extern int bl_wireless_mac_addr_set(unsigned char mac[8]);
++        unsigned char mac[8] = {0,0,6,7,11,0,0,0xc2};
++        bl_wireless_mac_addr_set(mac);
++    }
+ }
+ 
+ void bl702_main()
+@@ -315,7 +322,11 @@ void bl702_main()
+     static StackType_t aos_loop_proc_stack[1024];
+     static StaticTask_t aos_loop_proc_task;
+ 
++    SDK_STAGE = 1;
+     bl_sys_early_init();
++    bl_gpio_output_set(21, 0);
++    bl_gpio_enable_output(21, 0, 0);
++    SDK_STAGE = 2;
+ 
+     /*Init UART In the first place*/
+     hosal_uart_init(&uart_stdio);
+@@ -329,6 +340,7 @@ void bl702_main()
+     );
+ 
+     system_early_init();
++    SDK_STAGE = 3;
+ 
+     puts("[OS] Starting aos_loop_proc task...\r\n");
+     xTaskCreateStatic(aos_loop_proc, (char*)"event_loop", sizeof(aos_loop_proc_stack)/4, NULL, 15, aos_loop_proc_stack, &aos_loop_proc_task);
+diff --git a/components/platform/soc/bl702/bl702/evb/src/boot/gcc/start.S b/components/platform/soc/bl702/bl702/evb/src/boot/gcc/start.S
+index 7903660..50582b2 100644
+--- a/components/platform/soc/bl702/bl702/evb/src/boot/gcc/start.S
++++ b/components/platform/soc/bl702/bl702/evb/src/boot/gcc/start.S
+@@ -11,6 +11,24 @@
+ 	.type bl702_start,@function
+ 
+ bl702_start:
++    /* Pinecil fixture: GPIO21 heater off before any SDK initialization. */
++    li t0, 0x40000188
++    lw t1, 0(t0)
++    li t2, 0xffdfffff
++    and t1, t1, t2
++    sw t1, 0(t0)
++    li t0, 0x40000128
++    lw t1, 0(t0)
++    li t2, 0x0000ffff
++    and t1, t1, t2
++    li t2, 0x0b020000
++    or t1, t1, t2
++    sw t1, 0(t0)
++    li t0, 0x40000190
++    lw t1, 0(t0)
++    li t2, 0x00200000
++    or t1, t1, t2
++    sw t1, 0(t0)
+ 	.cfi_startproc
+ 	.cfi_undefined ra
+ .option push
+diff --git a/customer_app/bl702_demo_event/bl702_demo_event/ble_peripheral.c b/customer_app/bl702_demo_event/bl702_demo_event/ble_peripheral.c
+index fba9e84..9557780 100644
+--- a/customer_app/bl702_demo_event/bl702_demo_event/ble_peripheral.c
++++ b/customer_app/bl702_demo_event/bl702_demo_event/ble_peripheral.c
+@@ -62,9 +62,11 @@ static const struct {
+     { BLE_INIT_IND,             BleInitIndHandler},
+     { BLE_START_ADV_IND,        BleStartAdvIndHandler},
+     { BLE_CONNECTED_CFM,        BleConnectedCfmHandler},
++#if defined(CONFIG_BT_SMP)
+     { BLE_START_SECURITY_IND,   BleStartSecurityIndHandler},
+     { BLE_PAIRING_FAILED_CFM,   BlePairingFailedCfmHandler},
+     { BLE_PAIRING_SUCCEED_CFM,  BlePairingSucceedCfmHandler},
++#endif
+     { BLE_DISCONNECT_CFM,       BleDisconnectCfmHandler},
+ };
+ static void BleConnectedCb(struct bt_conn *conn, u8_t err)
+@@ -81,6 +83,8 @@ static void BleConnectedCb(struct bt_conn *conn, u8_t err)
+         return;
+     }
+ 
++    extern volatile unsigned SDK_CONNECTED;
++    SDK_CONNECTED++;
+     APP_DEBUG("connected: %s", addr);
+     if (!BleConn) {
+         BleConn = conn;
+@@ -98,6 +102,8 @@ static void BleDisconnectedCb(struct bt_conn *conn, u8_t reason)
+     char addr[BT_ADDR_LE_STR_LEN];
+ 
+     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
++    extern volatile unsigned SDK_DISCONNECTED;
++    SDK_DISCONNECTED++;
+     APP_DEBUG("disconnected: %s (reason %u)", addr, reason);
+ 
+     if (BleConn == conn) {
+@@ -207,7 +213,9 @@ static void BleInitIndHandler(void* data)
+ {
+     if(!BleInited){
+         bt_conn_cb_register(&BleconnCb);
++#if defined(CONFIG_BT_SMP)
+         bt_conn_auth_cb_register(&BleAuthCb);
++#endif
+         BleInited = 1;
+         SEND_EVENT_NOW(BLE_EVT,BLE_START_ADV_IND,0);
+     }else{
+@@ -245,7 +253,9 @@ static void BleStartAdvIndHandler(void* data)
+ static void BleConnectedCfmHandler(void* data)
+ {
+     (void)data;
++#if defined(CONFIG_BT_SMP)
+     SEND_EVENT_NOW(BLE_EVT,BLE_START_SECURITY_IND,0);
++#endif
+ }
+ 
+ #if defined(CONFIG_BT_SMP)
+@@ -295,7 +305,7 @@ static void AppHandler(input_event_t *event, void *private_data)
+     int i;
+     uint16_t id = event->code;
+ 
+-    for(i=0;i<sizeof(BleHandler);i++){
++    for(i=0;i<sizeof(BleHandler)/sizeof(BleHandler[0]);i++){
+         if(id == BleHandler[i].id){
+             BleHandler[i].func(private_data);
+             return;
+diff --git a/customer_app/bl702_demo_event/bl702_demo_event/bouffalo.mk b/customer_app/bl702_demo_event/bl702_demo_event/bouffalo.mk
+index a4c7c54..2c1922f 100644
+--- a/customer_app/bl702_demo_event/bl702_demo_event/bouffalo.mk
++++ b/customer_app/bl702_demo_event/bl702_demo_event/bouffalo.mk
+@@ -118,3 +118,5 @@ ifeq ($(CONFIG_BLE_DISABLE_ADV_DELAY), 1)
+ CFLAGS   += -DCFG_BLE_DISABLE_ADV_DELAY
+ CPPFLAGS += -DCFG_BLE_DISABLE_ADV_DELAY
+ endif
++
++COMPONENT_ADD_LDFLAGS += -Wl,--wrap=rwble_isr
+diff --git a/customer_app/bl702_demo_event/bl702_demo_event/forensics.c b/customer_app/bl702_demo_event/bl702_demo_event/forensics.c
+new file mode 100644
+index 0000000..58c5277
+--- /dev/null
++++ b/customer_app/bl702_demo_event/bl702_demo_event/forensics.c
+@@ -0,0 +1,13 @@
++#include <stdint.h>
++volatile uint32_t SDK_IRQ_COUNT, SDK_IRQ_MAX_US;
++volatile uint32_t SDK_CONNECTED, SDK_DISCONNECTED, SDK_HEARTBEAT;
++extern void __real_rwble_isr(void);
++void __wrap_rwble_isr(void) {
++    uint32_t start, end;
++    __asm__ volatile ("csrr %0, mcycle" : "=r"(start));
++    __real_rwble_isr();
++    __asm__ volatile ("csrr %0, mcycle" : "=r"(end));
++    uint32_t elapsed = (end - start) / 144;
++    SDK_IRQ_COUNT++;
++    if (elapsed > SDK_IRQ_MAX_US) SDK_IRQ_MAX_US = elapsed;
++}
+diff --git a/customer_app/bl702_demo_event/bl702_demo_event/main.c b/customer_app/bl702_demo_event/bl702_demo_event/main.c
+index 7cc3c20..a419614 100644
+--- a/customer_app/bl702_demo_event/bl702_demo_event/main.c
++++ b/customer_app/bl702_demo_event/bl702_demo_event/main.c
+@@ -809,14 +809,18 @@ static void system_thread_init()
+ void rf_reset_done_callback(void)
+ {
+ #if !defined(CFG_ZIGBEE_HBN)
+-    hal_tcal_restart();
++    /* No board temperature compensation task in this fixture. */
+ #endif
+ }
+ 
+ void main()
+ {
+-    system_init();
+-    system_thread_init();
++    // Pinecil test fixture: heater off; no EVB GPIO/temperature setup.
++    bl_gpio_output_set(21, 0);
++    bl_gpio_enable_output(21, 0, 0);
++    ble_init();
++    extern volatile unsigned SDK_HEARTBEAT;
++    for (;;) { SDK_HEARTBEAT++; vTaskDelay(pdMS_TO_TICKS(1000)); }
+ 
+ #if defined(CONFIG_AUTO_PTS)
+     tester_init();

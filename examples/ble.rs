@@ -7,12 +7,27 @@ macro_rules! trace {
     ($($args:tt)*) => { $crate::trace(core::format_args!($($args)*)) };
 }
 fn trace(args: core::fmt::Arguments<'_>) {
+    #[cfg(feature = "ble-diagnostics")]
+    if diagnostics::mode() == 1 {
+        diagnostics::record(20, 0);
+        rtt_target::print_impl::write_fmt(0, args);
+        rtt_target::rprint!("\n");
+        diagnostics::record(21, 0);
+        return;
+    }
     use core::fmt::Write;
     let mut text = heapless::String::<512>::new();
     let _ = text.write_fmt(args);
     let _ = text.push('\n');
+    #[cfg(feature = "ble-diagnostics")]
+    diagnostics::record(20, 0);
     rtt_target::rprint!(text.as_str());
+    #[cfg(feature = "ble-diagnostics")]
+    diagnostics::record(21, 0);
 }
+#[cfg(feature = "ble-diagnostics")]
+#[path = "ble/diagnostics.rs"]
+mod diagnostics;
 #[path = "ble/gatt.rs"]
 mod gatt;
 use bl706_hal::{clock, gpio::Output};
@@ -24,6 +39,10 @@ static EXECUTOR: StaticCell<bl706_hal::Executor> = StaticCell::new();
 #[embassy_executor::task]
 async fn heartbeat() {
     loop {
+        #[cfg(feature = "ble-diagnostics")]
+        {
+            diagnostics::poll();
+        }
         embassy_time::Timer::after_secs(5).await;
         trace!(
             "BLE metrics us={} {:?}",
@@ -57,6 +76,8 @@ async fn exercise(transport: bl706_ble::NativeTransport, _heater_off: Output<21>
 }
 #[unsafe(no_mangle)]
 extern "C" fn __bl706_main() -> ! {
+    #[cfg(feature = "ble-diagnostics")]
+    diagnostics::init();
     rtt_target::rtt_init_print!(rtt_target::ChannelMode::NoBlockSkip, 4096);
     trace!("Pinecil BLE experiment; heater OFF; XIP/IMFC");
     let mut p = bl706_hal::init_with_config(clock::Config::pinecil_v2_144mhz()).unwrap();
@@ -64,6 +85,8 @@ extern "C" fn __bl706_main() -> ! {
     bl706_hal::enable_interrupts();
     let (transport, runner) =
         unsafe { bl706_ble::initialize(p.radio, &mut p.software_interrupt) }.unwrap();
+    #[cfg(feature = "ble-diagnostics")]
+    diagnostics::activate();
     EXECUTOR.init(bl706_hal::Executor::new()).run(|s| {
         s.spawn(worker(runner).unwrap());
         s.spawn(heartbeat().unwrap());

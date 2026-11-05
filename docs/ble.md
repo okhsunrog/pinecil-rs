@@ -71,6 +71,9 @@ nearby during the test.
 This is a test counter, not a setpoint or heater control. The address is fixed
 for reproducibility; per-device identity/privacy is future work.
 
+See the [timer/placement investigation](ble-forensics.md) for captured failure
+state, controlled deadline injection, timer-only recovery and the C SDK reference.
+
 ## Validation scope
 
 The 2026-11-05 hardware session used Pinecil V2, the Grapple Pico JTAG port and

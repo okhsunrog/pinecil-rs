@@ -57,6 +57,11 @@ pub async fn run(transport: bl706_ble::NativeTransport) -> ! {
                     )
                     .await
                     .unwrap();
+                #[cfg(feature = "ble-diagnostics")]
+                {
+                    crate::diagnostics::record(10, 0);
+                    crate::diagnostics::anchor();
+                }
                 trace!("BLE: advertising Pinecil Rust; heater OFF");
                 let conn = advertiser
                     .accept()
@@ -64,12 +69,16 @@ pub async fn run(transport: bl706_ble::NativeTransport) -> ! {
                     .unwrap()
                     .with_attribute_server(&server)
                     .unwrap();
+                #[cfg(feature = "ble-diagnostics")]
+                crate::diagnostics::record(11, 0);
                 trace!("BLE: connected");
                 select(
                     async {
                         loop {
                             match conn.next().await {
                                 GattConnectionEvent::Disconnected { reason } => {
+                                    #[cfg(feature = "ble-diagnostics")]
+                                    crate::diagnostics::record(12, 0);
                                     trace!("BLE: disconnected {:?}", reason);
                                     break;
                                 }

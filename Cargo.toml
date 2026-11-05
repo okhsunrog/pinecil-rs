@@ -8,6 +8,7 @@ description = "Embassy application firmware for Pinecil V2 / BL706"
 
 [features]
 default = ["fpu"]
+ble-diagnostics = ["ble"]
 ble = ["fpu", "dep:bl706-ble", "dep:bt-hci", "dep:trouble-host"]
 fpu = ["bl706-hal/fpu"]
 pd-diagnostics = []

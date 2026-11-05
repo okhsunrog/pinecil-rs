@@ -4,12 +4,12 @@ Scan instruction encodings, not just objdump text: unsupported opcodes can be
 printed as <unknown> by disassemblers without +a. Also checks compressed FP ops.
 """
 from pathlib import Path
+import argparse
 import struct
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 
-def audit(path, fpu=False, probes=False):
+def audit(path, fpu=False, probes=False, ble_placement="itcm"):
     data = path.read_bytes()
     assert data[:7] == b"\x7fELF\x01\x01\x01", path
     h = struct.unpack_from("<16sHHIIIIIHHHHHH", data)
@@ -35,7 +35,13 @@ def audit(path, fpu=False, probes=False):
         assert 0x22014000 <= syms["__data_start"] <= syms["__bss_end"] <= 0x22020000, "BLE calibration overlaps live RAM"
         assert 0x22020000 <= syms["__stack_bottom"] < syms["__stack_top"] <= 0x22024000
         for hot in ("rwble_isr", "rwip_schedule", "lld_evt_end"):
-            assert 0x22014000 <= syms[hot] < 0x22020000, (hot, "not in ITCM")
+            lo, hi = (0x22014000, 0x22020000) if ble_placement == "itcm" else (0x23000000, 0x230ff000)
+            assert lo <= syms[hot] < hi, (hot, "wrong code placement", ble_placement)
+        if "BLE_FLIGHT_RECORDER" in syms:
+            trace = sections[".ble_trace"]
+            assert trace[1] == 8 and 0x22022000 <= trace[3] < trace[3]+trace[5] <= 0x22024000
+            assert syms["__data_start"] == 0x2201b800, "diagnostic data layout changed"
+            assert 0x22014000 <= syms["ble_trace_timer_store"] < 0x2201b800
         assert not any(s.startswith(("xTask", "vTask", "xQueue", "vQueue", "pvPort")) for s in syms), "RTOS symbol in BLE image"
         assert not any(n.startswith((".blerom", ".retention", ".tcm_data")) for n in sections), "uncopied vendor orphan section"
     flash = ".bootheader" in sections
@@ -140,5 +146,8 @@ def audit(path, fpu=False, probes=False):
     print(f"{path}: {'XIP+RAM' if flash else 'RAM'}/vector/ABI checks OK; A={len(atomic)}, FP={float_ops}, stack=8192")
 
 if __name__ == "__main__":
-    path = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT/"target/riscv32imfc-unknown-none-elf/release/pinecil-rs"
-    audit(path.resolve(), fpu="riscv32imfc-unknown-none-elf" in str(path))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("path", nargs="?", type=Path, default=ROOT/"target/riscv32imfc-unknown-none-elf/release/pinecil-rs")
+    parser.add_argument("--ble-placement", choices=("itcm", "xip"), default="itcm")
+    args = parser.parse_args()
+    audit(args.path.resolve(), fpu="riscv32imfc-unknown-none-elf" in str(args.path), ble_placement=args.ble_placement)
