@@ -77,6 +77,14 @@ not connected on Pinecil V2; use the driver's external-detector constructor.
 Buttons: GPIO25/28, active high with pull-downs. GPIO21 is the active-high heater
 drive and is held low.
 
+The stock panel's full addressable resolution is 96×16. The application uses
+`DisplaySize96x16`, a 192-byte framebuffer and coordinates x=0..95, y=0..15.
+Blank space between the setpoint, OFF label and PD information is part of the
+current UI layout. The glass is larger than the active pixel area; the display
+controller's larger RAM does not add physical pixels. See the
+[PINE64 specifications](https://pine64.org/documentation/Pinecil/_full/#specifications)
+and [panel drawing](https://files.pine64.org/doc/datasheet/pinecil/1810010328_UG-Univision-Semicon-UG-9616TSWCG02_C88335.pdf).
+
 ## Validation
 
 ```sh
