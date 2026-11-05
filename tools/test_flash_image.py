@@ -15,7 +15,7 @@ class FlashImageTests(unittest.TestCase):
         elf, image, header = prepare(ELF)
         self.assertEqual(len(elf), len(ELF))
         self.assertEqual(header[:4], b"BFNP")
-        self.assertEqual(header[12], 0x10, "1-1-1 SPI must disable cache burst wrap")
+        self.assertEqual(header[12], 0x11, "Dual Output must disable cache burst wrap")
         self.assertEqual(header[132:164], hashlib.sha256(image).digest())
         for start, end, crc in [(12, 96, 96), (104, 112, 112), (0, 172, 172)]:
             self.assertEqual(zlib.crc32(header[start:end]), struct.unpack_from("<I", header, crc)[0])

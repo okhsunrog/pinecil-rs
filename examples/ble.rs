@@ -82,6 +82,12 @@ extern "C" fn __bl706_main() -> ! {
     trace!("Pinecil BLE experiment; heater OFF; XIP/IMFC");
     let mut p = bl706_hal::init_with_config(clock::Config::pinecil_v2_144mhz()).unwrap();
     let off = p.pins.p21.into_output(false);
+    trace!(
+        "Clocks CPU={} bus={} flash={} MHz",
+        p.clocks.cpu_hz() / 1_000_000,
+        p.clocks.bus_hz() / 1_000_000,
+        p.clocks.flash_hz() / 1_000_000
+    );
     bl706_hal::enable_interrupts();
     let (transport, runner) =
         unsafe { bl706_ble::initialize(p.radio, &mut p.software_interrupt) }.unwrap();

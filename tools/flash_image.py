@@ -75,8 +75,9 @@ def prepare(elf):
     struct.pack_into("<II", header, 0, 0x504E4642, 1)
     header[8:96] = bytes.fromhex(
         # MX25L8006, reviewed against the SDK Mxic profile and board backup.
-        # ioMode bit4 disables cache burst wrap for ordinary 1-1-1 SPI reads.
-        "46 43 46 47 10 00 01 01 66 99 ff 03 9f 00 9f 00 "
+        # ioMode=DO (1-1-2), as in the board's stock header. Bit4 disables
+        # cache burst wrap. MX25L8006 supports Dual Output, not Quad I/O.
+        "46 43 46 47 11 00 01 01 66 99 ff 03 9f 00 9f 00 "
         "04 c2 00 01 c7 20 52 d8 06 02 32 00 0b 01 0b 01 "
         "3b 01 bb 00 6b 01 eb 02 eb 02 02 50 00 01 00 01 "
         "01 00 02 01 02 01 ab 01 05 00 00 00 01 00 00 00 "

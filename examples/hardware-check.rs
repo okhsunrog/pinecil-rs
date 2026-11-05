@@ -120,8 +120,22 @@ async fn check(mut heater: bl706_hal::gpio::Output<21>) {
 #[unsafe(no_mangle)]
 extern "C" fn __bl706_main() -> ! {
     rtt_target::rtt_init_print!(rtt_target::ChannelMode::NoBlockSkip, 4096);
-    let p = bl706_hal::init();
+    let p = bl706_hal::init_with_config(bl706_hal::clock::Config::pinecil_v2_144mhz())
+        .expect("Pinecil clock initialization failed");
     let heater = p.pins.p21.into_output(false);
+    let flash_cfg = bl706_hal::pac::GLB.clk_cfg2().read().0;
+    assert_eq!(flash_cfg & 0xff00, 0x3900, "DLL96M/2 flash clock");
+    assert_eq!(p.clocks.cpu_hz(), 144_000_000);
+    assert_eq!(p.clocks.bus_hz(), 72_000_000);
+    assert_eq!(p.clocks.flash_hz(), 48_000_000);
+    let read_command = bl706_hal::pac::SF_CTRL.sf_if_iahb_1().read().0;
+    let read_control = bl706_hal::pac::SF_CTRL.sf_if_iahb_0().read().0;
+    rtt_target::rprintln!(
+        "Clocks CPU=144 bus=72 flash=48 MHz; CLK_CFG2={:08x} IAHB={:08x}/{:08x}",
+        flash_cfg,
+        read_control,
+        read_command
+    );
     bl706_hal::enable_interrupts();
     rtt_target::rprintln!("XIP hardware check starting");
     EXECUTOR.init(bl706_hal::Executor::new()).run(|s| {

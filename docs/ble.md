@@ -88,9 +88,15 @@ rprintln calls formatted Debug/numbers with IRQs masked. Logs now format into a
 local buffer with IRQs enabled, then only copy to RTT inside its lock. These
 measurements are not a proven scheduling budget for UI/PD coexistence.
 
-The final ITCM/logging image completed five reconnect/read/write/notification
-cycles with OpenOCD closed throughout the test. Its 206,048-byte boot payload
-has SHA256 `e2b68167271c4759ffa4f3e6053670d474fd36023e898369918b8f376f15ec12`.
+The current ITCM/logging image uses a 144 MHz CPU, 72 MHz bus and 48 MHz Dual
+Output (1-1-2) flash reads, as described in [clocks.md](clocks.md). It completed
+ten reconnect/read/write/notification cycles and 80 notifications with OpenOCD
+closed throughout the test. Its 206,368-byte boot payload has SHA256
+`72737f97d007186117721b42c28081ebd299e9b5010d91b687fcacf1a5dfd41e`.
+Post-test register readback confirmed `CLK_CFG2=0xff8f3910`, CPU/bus divisors
+1/2 and flash read opcode `0x3B`; GPIO21 remained driven low.
+After a further `probe-rs reset --method core`, the same image passed three
+more complete cycles and 24 notifications without reflashing or USB reconnection.
 Flash programming used probe-rs `--verify`; offline checks pass for both the
 normal application and the BLE example. These short tests do not establish
 long-term radio reliability.

@@ -4,6 +4,10 @@ This experiment keeps Pinecil GPIO21 driven low. It does not start heating,
 OLED, PD or sensor tasks. The controller and RF archives are unchanged; the
 optional instruction patch affects only a disposable diagnostic ELF.
 
+The captures below record the earlier 8 MHz single-line flash configuration.
+The subsequent normal firmware profile uses 144 MHz CPU / 72 MHz bus / 48 MHz
+Dual Output flash; see [clock configuration and hardware checks](clocks.md).
+
 ## Established failure mechanism
 
 On 2026-11-05 an all-XIP image reproduced a persistent advertising stop. Firmware
@@ -126,8 +130,8 @@ stay in XIP. Hardware measurements support retaining the urgent subset in ITCM.
 The inspected [official C SDK clock setup](https://github.com/bouffalolab/bl_iot_sdk/blob/edcf613f073d3ef7d2f290d7c285b69be35da75b/components/platform/hosal/bl702_hal/bl_sys.c)
 uses a 144 MHz CPU and `GLB_SFLASH_CLK_96M` divided by two: **48 MHz SPI**.
 Its [linker](https://github.com/bouffalolab/bl_iot_sdk/blob/edcf613f073d3ef7d2f290d7c285b69be35da75b/components/platform/soc/bl702/bl702/evb/ld/flash.ld)
-leaves most controller code in flash. Our conservative boot header currently
-leaves ordinary single-SPI reads at **8 MHz**. CPU frequency alone therefore
+leaves most controller code in flash. At this investigation stage, our conservative
+boot header left ordinary single-SPI reads at **8 MHz**. CPU frequency alone therefore
 was not an equivalent configuration. Comparing RTOS names without accounting
 for flash frequency and code placement would mix independent variables.
 
@@ -240,8 +244,10 @@ The successful 48 MHz run does not erase the captured 4 MHz failure or certify
 all-XIP operation under arbitrary load. It supports the separate flash-latency
 variable identified by the C comparison. Keep urgent paths in ITCM, avoid long
 IRQ-masked formatting, and measure again before adding UI/PD workload. The
-normal example retains the existing conservative boot clock and ITCM layout;
-the live SPI command is confined to diagnostics.
+normal example at this investigation stage retained the conservative boot clock
+and ITCM layout; the live SPI command is confined to diagnostics. The later
+[48 MHz Dual Output profile](clocks.md) applies the fast clock during normal
+HAL initialization while retaining urgent code in ITCM.
 
 For RAM budgeting, the C fixture's linker map retained 60,546 bytes of controller
 `.text`/`.bleromro` and 6,448 bytes from RF: 66,994 bytes, about 65 KiB of code,
@@ -250,7 +256,7 @@ state, and Rust garbage collection can produce a different exact size. It is
 substantially larger than the urgent ITCM subset; moving everything requires a
 new memory budget, not simply moving the archive into one linker section.
 
-After the experiment the previously verified normal Rust BLE image was restored
+After that experiment the previously verified normal Rust BLE image was restored
 with flash verification. Its boot payload remains the documented 206,048-byte
 image `e2b68167271c4759ffa4f3e6053670d474fd36023e898369918b8f376f15ec12`.
 The fault-injection image and C fixture were not left on the device.

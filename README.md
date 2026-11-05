@@ -264,7 +264,11 @@ records the evidence, limitations and isolated test procedure.
 
 The application owns [pinecil.x](pinecil.x), the board setup, UI/PD policy,
 Cargo runner and [boot-header preparation](tools/flash_image.py). The boot header
-disables cache burst wrap for the SPI read mode validated on this board.
+selects Dual Output reads (1-1-2, command `0x3B`) and disables cache burst wrap,
+matching the mode in this board's stock header. After conservative ROM startup,
+the firmware selects a 144 MHz CPU, 72 MHz bus and 48 MHz flash clock.
+See [clock configuration and hardware checks](docs/clocks.md) for the sources,
+transition sequence and validation scope.
 
 ## Pinned firmware dependencies
 
