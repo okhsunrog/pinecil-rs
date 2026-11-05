@@ -38,7 +38,7 @@ impl Default for Ui {
     fn default() -> Self {
         Self {
             screen: Screen::Main,
-            setpoint_c: 300,
+            setpoint_c: MIN_SETPOINT_C,
             heating_requested: false,
             chord_started_heating: false,
             brightness_index: 1,
@@ -109,9 +109,9 @@ mod tests {
     fn setpoint_steps_are_bounded_in_both_directions() {
         let mut ui = Ui::default();
         assert!(ui.handle(ButtonEvent::Short(Button::Plus)));
-        assert_eq!(ui.setpoint_c, 305);
+        assert_eq!(ui.setpoint_c, 155);
         assert!(ui.handle(ButtonEvent::Short(Button::Minus)));
-        assert_eq!(ui.setpoint_c, 300);
+        assert_eq!(ui.setpoint_c, 150);
         for _ in 0..1000 {
             ui.handle(ButtonEvent::Short(Button::Minus));
         }
@@ -129,11 +129,11 @@ mod tests {
         let mut ui = Ui::default();
         ui.handle(ButtonEvent::Long(Button::Plus));
         assert_eq!(ui.screen, Screen::Brightness);
-        assert_eq!(ui.setpoint_c, 300);
+        assert_eq!(ui.setpoint_c, 150);
         assert_eq!(ui.contrast(), 26);
         ui.handle(ButtonEvent::Short(Button::Plus));
         assert_eq!(ui.brightness_level(), 3);
-        assert_eq!(ui.setpoint_c, 300);
+        assert_eq!(ui.setpoint_c, 150);
         ui.handle(ButtonEvent::Long(Button::Plus));
         assert_eq!(ui.screen, Screen::Main);
         assert_eq!(ui.contrast(), 64);
@@ -167,7 +167,7 @@ mod tests {
         ui.handle(ButtonEvent::Long(Button::Plus));
         assert!(ui.handle(ButtonEvent::Long(Button::Minus)));
         assert_eq!(ui.screen, Screen::Measurements);
-        assert_eq!(ui.setpoint_c, 300);
+        assert_eq!(ui.setpoint_c, 150);
         assert_eq!(ui.contrast(), 26);
     }
     #[test]

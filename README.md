@@ -22,6 +22,7 @@ The current application includes:
 - Tip-resistance probing and a separate temperature/power controller, with
   timer-limited heater bursts, latched faults and a watchdog. Initial limits
   are 20 W estimated average power and a 350 C maximum setpoint.
+  The initial setpoint is 150 C; every boot starts with heating OFF.
 - USB-PD sink negotiation through [`fusb302b`](https://github.com/okhsunrog/fusb302b)
   and [`usbpd`](https://github.com/elagil/usbpd): fixed SPR up to 20 V, then EPR
   up to 28 V when offered. SPR requests are capped at 3 A; after successful EPR

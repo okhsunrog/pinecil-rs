@@ -4,6 +4,7 @@ Heating starts **OFF after every boot**. Hold both buttons for one second to
 request heating; pressing both again stops it after debounce, without waiting
 for another long hold. Ordinary setpoint, brightness and measurement-page
 buttons do not start heating. A fault latches until an explicit OFF request.
+The initial setpoint is 150 C, matching the first sustained hardware test.
 
 The initial qualification limits are **20 W average estimated electrical power**
 and a **350 C maximum setpoint**. These are firmware bring-up limits, not a
@@ -203,5 +204,36 @@ Review exposed a separate concrete bug: the old controller allowed bursts
 requiring about 4.5 A under a 3 A contract because only average power was
 limited. The current guard, EPR current request and cartridge-aware selection
 above fix that error and have host tests. The new image still requires hardware
-qualification; fault injection during heating and sustained UI/BLE/PD
-coexistence remain pending.
+qualification at higher targets and loads.
+
+The corrected image (application [31ca23f](https://github.com/okhsunrog/pinecil-rs/commit/31ca23f1887a0b47fe7963a90c26d7649941bf5b),
+default features plus both diagnostics) was then programmed with readback
+verification. KM003C independently captured the EPR request for 28 V / 5 A
+and PS_RDY. A repeated 5 W / 80 C / 8 s run and a 10 W / 150 C / 30 s run
+both ended automatically OFF. The latter reached a maximum logged nominal
+152.74 C, then regulated near 150 C. The user confirmed working buttons,
+LIGHT, measurements and display; a concurrent GATT cycle completed read,
+write and 18 notifications before a clean disconnect.
+
+The meter captured 300112 samples at nominal 1000 SPS without reported missing
+samples. From the first heating burst through the remaining 182.84 seconds,
+VBUS stayed between 27.256 and 28.071 V, with no recorded Hard or Soft Reset.
+Peak measured current magnitude was 4.759 A (negative sign in this meter
+orientation). Input power includes the board and switching dynamics: a two-second
+early plateau in the nominal 5 W test averaged 6.69 W at the input; idle was
+about 0.36 W. This does not calibrate cartridge power or establish a strict
+measured wattage limit; the controller's wattage remains an estimate.
+
+Injecting one bad temperature frame while heating latched `Sensor`, with
+zero output thereafter until OFF. A separate 350 ms control-task stall latched
+`StaleSample`, again with no further bursts. TIMER0 completed 532 live bursts
+over these tests, cancelled none, and recorded a maximum lateness of 112 us.
+ADC errors remained zero; the intentional sensor injection was software-only.
+There were zero I2C errors in the captured diagnostic records. These tests
+qualify this cartridge and the bounded scenarios described, not sustained
+soldering or independently calibrated hot-tip temperature.
+
+One initial attachment through the inline meter returned `NoCcDetected` and
+stayed at 5 V. A software reset with CC already present negotiated successfully.
+The application now retries this transient result every 250 ms, with heater
+interlocked while no contract exists; I2C/version errors still stop PD startup.

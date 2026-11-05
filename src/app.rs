@@ -98,7 +98,7 @@ mod tests {
 
         // Do not poll the display while more events than the queue can hold
         // are processed. An OLED recovery must not stall application input.
-        for _ in 0..20 {
+        for _ in 0..crate::ui::MAX_SETPOINT_C {
             buttons.try_send(ButtonEvent::Short(Button::Plus)).unwrap();
             drive(application.as_mut());
         }
@@ -152,7 +152,7 @@ mod tests {
         drive(application.as_mut());
 
         let latest = display.try_changed().unwrap();
-        assert_eq!(latest.ui.setpoint_c, 305);
+        assert_eq!(latest.ui.setpoint_c, 155);
         assert_eq!(latest.power, PowerStatus::Error);
         assert_eq!(telemetry.try_changed(), Some(latest));
         let mut late = snapshots.receiver().unwrap();
@@ -175,7 +175,7 @@ mod tests {
         drive(application.as_mut());
         display.try_get().unwrap();
 
-        for _ in 0..30 {
+        for _ in 0..crate::ui::MAX_SETPOINT_C {
             buttons.try_send(ButtonEvent::Short(Button::Plus)).unwrap();
             drive(application.as_mut());
         }
@@ -229,7 +229,7 @@ mod tests {
         drive(application.as_mut());
         let latest = display.try_changed().unwrap();
         assert_eq!(latest.measurements, failed);
-        assert_eq!(latest.ui.setpoint_c, 305);
+        assert_eq!(latest.ui.setpoint_c, 155);
         assert_eq!(latest.power, contract);
     }
 }

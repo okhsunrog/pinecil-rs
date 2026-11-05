@@ -186,7 +186,7 @@ pub async fn run(i2c: SharedI2c, irq: Input<16>) {
     run_inner(i2c, irq).await;
 }
 
-async fn run_inner(i2c: SharedI2c, irq: Input<16>) {
+async fn run_inner(i2c: SharedI2c, mut irq: Input<16>) {
     STATUS.sender().send(PowerStatus::Waiting);
     #[cfg(feature = "pd-manual-start")]
     {
@@ -214,18 +214,31 @@ async fn run_inner(i2c: SharedI2c, irq: Input<16>) {
     // Pinecil V2 leaves the FUSB302 VBUS sense pin disconnected (IronOS:
     // NEEDS_VBUS_PROBE=0). The powered board must not wait on STATUS0.VBUSOK.
     // External detector `()` follows that board policy; it is not a voltage ADC.
-    let driver = match fusb302b::Fusb302b::init_with_vbus_and_interrupt(
-        i2c,
-        (),
-        fusb302b::GpioInterrupt(irq),
-    )
-    .await
-    {
-        Ok(driver) => driver,
-        Err(e) => {
-            log::error!("PD init failed: {:?}", e);
-            STATUS.sender().send(PowerStatus::Error);
-            return;
+    let mut waiting_for_cc = false;
+    let driver = loop {
+        match fusb302b::Fusb302b::init_with_vbus_and_interrupt(
+            i2c.clone(),
+            (),
+            fusb302b::GpioInterrupt(&mut irq),
+        )
+        .await
+        {
+            Ok(driver) => break driver,
+            Err(fusb302b::FusbError::NoCcDetected) => {
+                // VBUS can power the MCU before the source's CC is detectable,
+                // e.g. while inserting an inline meter. This is not a fatal
+                // bus error. Retry with the output interlocked, no board reset.
+                if !waiting_for_cc {
+                    log::info!("PD waiting for source CC; retrying initialization");
+                    waiting_for_cc = true;
+                }
+                Timer::after_millis(250).await;
+            }
+            Err(e) => {
+                log::error!("PD init failed: {:?}", e);
+                STATUS.sender().send(PowerStatus::Error);
+                return;
+            }
         }
     };
     log::info!("PD controller ready; SPR 20 V then EPR 28 V preferred");

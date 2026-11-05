@@ -152,6 +152,7 @@ impl Drop for Guard {
     }
 }
 
+#[derive(Clone)]
 pub struct TracedI2c(pub SharedI2c);
 impl ErrorType for TracedI2c {
     type Error = <SharedI2c as ErrorType>::Error;

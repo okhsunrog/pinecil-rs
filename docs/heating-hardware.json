@@ -3,7 +3,10 @@
   "board": "Pinecil V2 / BL706, cartridge inserted, iron in stand",
   "app_base_commit": "ffa3abc5feeddc4aa827d9786ef9ba73f89b56eb",
   "hal_revision": "0362b12961ae3b208c508d9e8496c0bcd2791ac0",
-  "features": ["default", "heater-diagnostics"],
+  "features": [
+    "default",
+    "heater-diagnostics"
+  ],
   "payload_bytes": 340464,
   "payload_sha256": "2e9f1c841abf3dc31e812531ace95d9d307bbd06061fbed648f05ff50f1dc6cb",
   "programming": {
@@ -25,8 +28,14 @@
   },
   "synchronized_counter_checks": {
     "zero_pwm_duty": true,
-    "requested_us": [20000, 2000],
-    "measured_us": [20044, 2003],
+    "requested_us": [
+      20000,
+      2000
+    ],
+    "measured_us": [
+      20044,
+      2003
+    ],
     "second_executor_stall_us": 6000,
     "completed": 2,
     "cancelled": 0,
@@ -34,7 +43,11 @@
     "independent_waveform_measurement": false
   },
   "resistance_probe": {
-    "off_on_off_uv": [629, 3708, 634],
+    "off_on_off_uv": [
+      629,
+      3708,
+      634
+    ],
     "classified_milliohm": 6200,
     "independent_resistance_measurement": false
   },
@@ -90,7 +103,114 @@
     "source_offer_limit_preserved": true,
     "cartridge_aware_fixed_voltage_selection": true,
     "host_tests_passed": true,
-    "hardware_qualification": "pending"
+    "hardware_qualification": "bounded 5 W / 80 C / 8 s and 10 W / 150 C / 30 s passed",
+    "tested_app_commit": "31ca23f1887a0b47fe7963a90c26d7649941bf5b",
+    "features": [
+      "default",
+      "heater-diagnostics",
+      "pd-diagnostics"
+    ],
+    "payload_bytes": 342256,
+    "payload_sha256": "402e474a8c361ce863cc6c65a535fbfc9fc87047928bfe2591d85991d1f4e923",
+    "readback_verify": true,
+    "flash_elapsed_seconds": 153.5,
+    "contract_mv": 28000,
+    "contract_ma": 5000,
+    "external_epr_request_and_ps_rdy_observed": true
   },
-  "absolute_temperature_calibration": false
+  "absolute_temperature_calibration": false,
+  "corrected_live_heating": {
+    "five_watt_run": {
+      "deadline_ms": 8000,
+      "target_c": 80,
+      "maximum_logged_nominal_centi_c": 7766,
+      "additional_completed_bursts": 77,
+      "automatic_off": true
+    },
+    "ten_watt_run": {
+      "deadline_ms": 30000,
+      "target_c": 150,
+      "maximum_logged_nominal_centi_c": 15274,
+      "additional_completed_bursts": 297,
+      "automatic_off": true,
+      "user_ui_check": "buttons, LIGHT, measurements and display working",
+      "ble_full_gatt_cycle_passed": true,
+      "ble_notifications": 18
+    },
+    "fault_injection": {
+      "sensor": "latched with completed count fixed at 448 until OFF",
+      "control_task_stall_ms": 350,
+      "stall": "StaleSample latched with completed count fixed at 534 until OFF",
+      "final_state": "OFF"
+    },
+    "total_live_bursts": 532,
+    "cancelled_bursts": 0,
+    "maximum_recorded_lateness_us": 112,
+    "adc_errors": 0,
+    "captured_i2c_errors": 0,
+    "meter": {
+      "samples": 300112,
+      "missing_samples": 0,
+      "load_segments": [
+        {
+          "capture_start_s": 117.236301,
+          "capture_end_s": 124.831219,
+          "duration_s": 7.603,
+          "vbus_min_v": 27.256439,
+          "vbus_max_v": 28.051751,
+          "peak_absolute_current_a": 4.758847,
+          "mean_absolute_input_w": 6.208719379142557,
+          "samples": 7604
+        },
+        {
+          "capture_start_s": 143.455382,
+          "capture_end_s": 173.044013,
+          "duration_s": 29.6,
+          "vbus_min_v": 27.259369,
+          "vbus_max_v": 28.064837,
+          "peak_absolute_current_a": 4.756346,
+          "mean_absolute_input_w": 6.430969153812371,
+          "samples": 29601
+        },
+        {
+          "capture_start_s": 192.357517,
+          "capture_end_s": 199.462463,
+          "duration_s": 7.103,
+          "vbus_min_v": 27.256048,
+          "vbus_max_v": 28.061712,
+          "peak_absolute_current_a": 4.747639,
+          "mean_absolute_input_w": 5.3395460226632885,
+          "samples": 7104
+        },
+        {
+          "capture_start_s": 246.169328,
+          "capture_end_s": 254.671436,
+          "duration_s": 8.506,
+          "vbus_min_v": 27.263665,
+          "vbus_max_v": 28.070892,
+          "peak_absolute_current_a": 4.750268,
+          "mean_absolute_input_w": 7.002566495356764,
+          "samples": 8507
+        }
+      ],
+      "after_first_heater_burst": {
+        "vbus_min_v": 27.256048,
+        "vbus_max_v": 28.070892,
+        "duration_s": 182.84
+      },
+      "meter_current_sign": "negative in this physical orientation; absolute values reported"
+    },
+    "meter_pd_hard_or_soft_resets_after_startup": 0,
+    "power_estimate_qualification": {
+      "five_watt_command_early_plateau_input_w": 6.6873,
+      "idle_input_w": 0.3584,
+      "interpretation": "meter includes board consumption and switching dynamics; cartridge power is not independently calibrated"
+    }
+  },
+  "attachment_observation": {
+    "first_attempt": "NoCcDetected; 5 V stable; no heater output",
+    "software_reset_with_stable_cc": "28 V / 5 A succeeded",
+    "new_retry_policy": "NoCcDetected retries every 250 ms; other errors remain fatal",
+    "retry_image_hardware_test": "pending"
+  }
 }
