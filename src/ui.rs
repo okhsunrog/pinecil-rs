@@ -1,7 +1,7 @@
 //! UI state independent of the display, GPIO and heater hardware.
 
 pub const MIN_SETPOINT_C: u16 = 150;
-pub const MAX_SETPOINT_C: u16 = 450;
+pub const MAX_SETPOINT_C: u16 = crate::heater::MAX_TARGET_C;
 pub const BRIGHTNESS: [u8; 4] = [8, 26, 64, 101];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -14,6 +14,8 @@ pub enum Button {
 pub enum ButtonEvent {
     Short(Button),
     Long(Button),
+    BothPressed,
+    BothHeld,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,6 +29,8 @@ pub enum Screen {
 pub struct Ui {
     pub screen: Screen,
     pub setpoint_c: u16,
+    pub heating_requested: bool,
+    chord_started_heating: bool,
     brightness_index: usize,
 }
 
@@ -35,6 +39,8 @@ impl Default for Ui {
         Self {
             screen: Screen::Main,
             setpoint_c: 300,
+            heating_requested: false,
+            chord_started_heating: false,
             brightness_index: 1,
         }
     }
@@ -45,6 +51,16 @@ impl Ui {
     pub fn handle(&mut self, event: ButtonEvent) -> bool {
         let previous = *self;
         match event {
+            ButtonEvent::BothPressed => {
+                self.chord_started_heating = self.heating_requested;
+                // Stopping requires only a debounced press, not the hold time.
+                self.heating_requested = false;
+            }
+            ButtonEvent::BothHeld => {
+                if !self.chord_started_heating {
+                    self.heating_requested = true;
+                }
+            }
             ButtonEvent::Long(Button::Plus) => {
                 self.screen = match self.screen {
                     Screen::Main | Screen::Measurements => Screen::Brightness,
@@ -153,5 +169,17 @@ mod tests {
         assert_eq!(ui.screen, Screen::Measurements);
         assert_eq!(ui.setpoint_c, 300);
         assert_eq!(ui.contrast(), 26);
+    }
+    #[test]
+    fn heating_starts_only_on_deliberate_chord_and_stops_on_press() {
+        let mut ui = Ui::default();
+        ui.handle(ButtonEvent::BothPressed);
+        assert!(!ui.heating_requested);
+        ui.handle(ButtonEvent::BothHeld);
+        assert!(ui.heating_requested);
+        ui.handle(ButtonEvent::BothPressed);
+        assert!(!ui.heating_requested);
+        ui.handle(ButtonEvent::BothHeld);
+        assert!(!ui.heating_requested);
     }
 }

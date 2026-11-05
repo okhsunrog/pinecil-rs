@@ -1,67 +1,28 @@
 use bl706_hal::gpio::Input;
+use embassy_futures::select::select3;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_time::{Duration, Instant, with_timeout};
-use pinecil_rs::app::ButtonEvents;
-use pinecil_rs::ui::{Button, ButtonEvent};
+use embassy_time::{Instant, Timer};
+use pinecil_rs::{app::ButtonEvents, button_gestures::Gestures};
 
 pub static EVENTS: ButtonEvents<CriticalSectionRawMutex> = ButtonEvents::new();
-const DEBOUNCE: Duration = Duration::from_millis(25);
-const HOLD: Duration = Duration::from_millis(700);
 
-/// Wait for a level to remain unchanged for the debounce interval. Edges wake
-/// the task through GPIO IRQs; the timeout restarts only after an actual edge.
-async fn stable<const N: u8>(pin: &mut Input<N>, high: bool) {
+/// Recognize chords before individual holds. Idle inputs sleep on GPIO IRQs;
+/// a short timer services debounce and hold deadlines while either is active.
+#[embassy_executor::task]
+pub async fn run(mut plus: Input<25>, mut minus: Input<28>) {
+    let mut gestures = Gestures::default();
     loop {
-        if high {
-            pin.wait_for_high().await;
-        } else {
-            pin.wait_for_low().await;
-        }
-        if with_timeout(DEBOUNCE, pin.wait_for_any_edge())
-            .await
-            .is_err()
-            && pin.is_high() == high
+        if let Some(event) =
+            gestures.update(Instant::now().as_millis(), plus.is_high(), minus.is_high())
         {
-            return;
-        }
-    }
-}
-
-async fn run<const N: u8>(mut pin: Input<N>, button: Button) {
-    loop {
-        stable(&mut pin, true).await;
-        let start = Instant::now();
-        log::debug!("button {:?} pressed gpio={}", button, N);
-        let event = if with_timeout(HOLD, stable(&mut pin, false)).await.is_err() {
-            let event = ButtonEvent::Long(button);
             EVENTS.send(event).await;
-            log::debug!("button {:?} event={:?}", button, event);
-            stable(&mut pin, false).await;
-            log::debug!(
-                "button {:?} released after {} ms",
-                button,
-                start.elapsed().as_millis()
-            );
-            continue;
-        } else {
-            ButtonEvent::Short(button)
-        };
-        EVENTS.send(event).await;
-        log::debug!(
-            "button {:?} event={:?} held={} ms",
-            button,
-            event,
-            start.elapsed().as_millis()
-        );
+        }
+        let delay_ms = if gestures.idle() { 60_000 } else { 10 };
+        select3(
+            plus.wait_for_any_edge(),
+            minus.wait_for_any_edge(),
+            Timer::after_millis(delay_ms),
+        )
+        .await;
     }
-}
-
-#[embassy_executor::task]
-pub async fn plus(pin: Input<25>) {
-    run(pin, Button::Plus).await;
-}
-
-#[embassy_executor::task]
-pub async fn minus(pin: Input<28>) {
-    run(pin, Button::Minus).await;
 }

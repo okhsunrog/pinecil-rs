@@ -40,8 +40,10 @@ pub struct Board {
     pub ble: (bl706_ble::NativeTransport, bl706_ble::Runner),
     pub software_interrupt: bl706_hal::executor::InterruptToken,
     pub log: Logger,
-    pub heater_off: gpio::Output<21>,
-    pub tip_probe: gpio::Input<24>,
+    pub heater: crate::heater_io::Carrier,
+    pub heater_timer: bl706_hal::timer::Timer<0>,
+    pub watchdog: bl706_hal::watchdog::Watchdog,
+    pub tip_probe: gpio::Output<24>,
     pub adc: BoardAdc,
     pub i2c: I2c,
     pub oled_reset: gpio::Pin<3>,
@@ -79,7 +81,18 @@ pub fn board() -> Board {
         p.clocks.bus_hz() / 1_000_000,
         p.clocks.flash_hz() / 1_000_000
     );
-    let heater_off = p.pins.p21.into_output(false);
+    // The AC-coupled gate driver needs a carrier, approximately 5.33 kHz as
+    // in IronOS. Pwm::new forces low before connecting the pad and stays off.
+    let heater = bl706_hal::pwm::Pwm::new(
+        p.pwm1,
+        p.pins.p21,
+        p.clocks,
+        bl706_hal::pwm::Config {
+            divider: (p.clocks.bus_hz() / 533_333) as u16,
+            period: 100,
+        },
+    )
+    .expect("heater PWM initialization failed");
     #[cfg(feature = "ble")]
     let ble = {
         // RF calibration temporarily owns IRQ3 and analog hardware. Complete
@@ -112,15 +125,37 @@ pub fn board() -> Board {
     );
     let mut i2c = I2c::new(p.i2c, p.pins.p10, p.pins.p11, p.clocks);
     i2c.set_frequency(p.clocks, 300_000).unwrap();
+    let heater_timer = bl706_hal::timer::Timer::new(
+        p.timer0,
+        p.clocks,
+        bl706_hal::timer::Config {
+            clock: bl706_hal::timer::ClockSource::System,
+            divider: (p.clocks.cpu_hz() / 1_000_000) as u16,
+            mode: bl706_hal::timer::Mode::FreeRunning,
+            compare: [u32::MAX; 3],
+        },
+    )
+    .expect("heater cutoff timer initialization failed");
+    let watchdog = bl706_hal::watchdog::Watchdog::new(
+        p.watchdog,
+        p.clocks,
+        bl706_hal::watchdog::Config {
+            timeout: core::time::Duration::from_millis(500),
+            ..Default::default()
+        },
+    )
+    .expect("heater watchdog initialization failed");
+    log::info!("Reset reason: {:?}; heater starts OFF", p.reset_reason);
     let board = Board {
         #[cfg(feature = "ble")]
         ble,
         software_interrupt: p.software_interrupt,
         log: Logger,
-        heater_off,
-        // Leave the cartridge-resistance test circuit high-impedance. This
-        // stage measures temperature without injecting any probe current.
-        tip_probe: p.pins.p24.into_input(gpio::Pull::None),
+        heater,
+        heater_timer,
+        watchdog,
+        // Low reverse-biases the resistance probe diode during thermometry.
+        tip_probe: p.pins.p24.into_output(false),
         adc,
         i2c,
         oled_reset: p.pins.p3,
@@ -141,6 +176,7 @@ pub fn banner(log: &mut Logger, name: &str) {
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     unsafe { core::arch::asm!("csrci mstatus, 8") };
+    crate::heater_io::emergency_stop();
     rtt_target::rprintln!("panic: {}", info);
     loop {
         core::hint::spin_loop();

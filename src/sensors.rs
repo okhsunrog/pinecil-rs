@@ -25,6 +25,7 @@ pub struct Measurements {
     pub counts: [Option<u16>; 3],
     pub gain_calibrated: bool,
     pub adc_errors: u32,
+    pub heater: crate::heater::Status,
 }
 
 impl Measurements {
@@ -36,6 +37,7 @@ impl Measurements {
         counts: [None; 3],
         gain_calibrated: false,
         adc_errors: 0,
+        heater: crate::heater::Status::OFF,
     };
 }
 
@@ -51,6 +53,13 @@ const TIP_SHORT_UV: u32 = 10_000;
 
 /// Starting value used by the Pinecil V2 BSP, not this cartridge's calibration.
 pub const DEFAULT_TIP_OFFSET_UV: u32 = 900;
+
+/// Amplifier input voltage before cartridge offset subtraction. Used for the
+/// resistance probe's off/on/off measurements; not a temperature reading.
+pub fn thermocouple_uv(pin_uv: u32) -> u32 {
+    (u64::from(pin_uv) * u64::from(TIP_GAIN_OHMS) / u64::from(TIP_GAIN_OHMS + TIP_FEEDBACK_OHMS))
+        as u32
+}
 
 // NTCG163JF103FTDS, 10 kohm pull-down, 3.3 V supply. Numerical reference
 // points from IronOS's Pinecil V2 NTC model, expressed on a 3.2 V / 65536
@@ -123,9 +132,12 @@ pub fn tip_temperature_centi_c(pin_uv: u32, handle: Reading<i32>, offset_uv: u32
         Reading::Pending => return Reading::Pending,
         Reading::Fault(error) => return Reading::Fault(error),
     };
-    let thermocouple_uv = (u64::from(pin_uv) * u64::from(TIP_GAIN_OHMS)
-        / u64::from(TIP_GAIN_OHMS + TIP_FEEDBACK_OHMS)) as u32;
-    match interpolate(&TIP_UV, thermocouple_uv.saturating_sub(offset_uv), 0, 1000) {
+    match interpolate(
+        &TIP_UV,
+        thermocouple_uv(pin_uv).saturating_sub(offset_uv),
+        0,
+        1000,
+    ) {
         Reading::Value(delta) => Reading::Value(delta + handle_centi_c),
         other => other,
     }

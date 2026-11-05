@@ -6,6 +6,9 @@ cargo fmt --all --check
 cargo clippy --release --locked --features pd-diagnostics --bin pinecil-rs -- -D warnings
 cargo build --release --locked --features pd-manual-start
 uv run --no-project tools/audit_elf.py
+cargo clippy --release --locked --features heater-diagnostics --bin pinecil-rs -- -D warnings
+cargo build --release --locked --features heater-diagnostics
+uv run --no-project tools/audit_elf.py
 # Cargo discovers config from cwd, not --manifest-path. Run host-only tests
 # outside the embedded config so they use the pinned toolchain's prebuilt std.
 project_dir=$PWD

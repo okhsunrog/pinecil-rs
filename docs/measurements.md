@@ -1,5 +1,10 @@
 # Read-only analog measurements
 
+This page records the original read-only acquisition and its hardware results.
+The current firmware extends it with a 10 Hz tip controller, resistance
+probing and bounded heating. See [tip control](heating.md) for current timing,
+limits and qualification. The historical tests below used heating OFF.
+
 `control.rs` owns the ADC, the heater-off GPIO21 output and the high-impedance
 GPIO24 cartridge-resistance probe input. It never constructs a PWM driver,
 drives GPIO21 high or injects tip-detection current. This is the first,

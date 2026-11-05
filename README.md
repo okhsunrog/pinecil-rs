@@ -17,18 +17,23 @@ The current application includes:
 - Async GPIO buttons with Embassy debounce and hold timers.
 - BLE advertising and a read/write/notify counter service. Application settings
   and telemetry are not yet mapped to GATT characteristics.
-- Read-only ADC estimates of input voltage, handle temperature and tip
+- ADC estimates of input voltage, handle temperature and tip
   temperature, with raw counts and faults logged over RTT.
+- Tip-resistance probing and a separate temperature/power controller, with
+  timer-limited heater bursts, latched faults and a watchdog. Initial limits
+  are 20 W estimated average power and a 350 C maximum setpoint.
 - USB-PD sink negotiation through [`fusb302b`](https://github.com/okhsunrog/fusb302b)
   and [`usbpd`](https://github.com/elagil/usbpd): 20 V SPR followed by 28 V EPR
   when offered, with a 3 A request limit. Otherwise it uses 5 V.
 - A Cargo runner that prepares the boot header, programs flash with readback
   verification, resets the core and attaches RTT.
 
-**Heating is not implemented.** The read-only controller owns GPIO21 and
-holds it low; the display shows OFF, and the setpoint is UI state only. Flashing
-this project replaces the firmware already installed on the iron, including
-IronOS. Hardware validation has been performed with the heater off.
+**Heating starts OFF after every boot.** Holding both buttons for one second
+requests heating; pressing both again stops it. Sensor values are nominal
+estimates, not independently calibrated hot-tip temperatures. See the
+[heater design, interlocks and qualification status](docs/heating.md).
+Flashing this project replaces the firmware already installed on the iron,
+including IronOS. The earlier BLE/PD validation was performed with heating off.
 
 PD runs on a software interrupt executor, preempting UI work while I2C
 interrupts can preempt PD. This addresses the missed EPR response deadlines
@@ -211,7 +216,9 @@ The ordinary ELF remains available for symbols and RTT decoding.
 
 | Input | Action |
 |---|---|
-| Short `+` / `-` | Change the displayed setpoint by 5 °C, within 150–450 °C |
+| Short `+` / `-` | Change the setpoint by 5 °C, within 150–350 °C |
+| Hold both buttons for 1 s while OFF | Request heating |
+| Press both buttons while heating | Stop heating; holding them longer keeps it OFF |
 | Hold `+` for 700 ms | Open or close the LIGHT brightness menu |
 | Short `+` / `-` in LIGHT | Choose one of four brightness levels |
 | Hold `-` for 700 ms | Enter or leave the measurements page |
@@ -223,7 +230,9 @@ stale temperature. See [conversion details and validation status](docs/measureme
 
 The footer shows PD status, such as `PD 28V 3.0A`, or menu controls. A moving
 square indicates ongoing UI updates. The displayed current is the negotiated
-limit, not measured load current. The heater remains off in every menu.
+limit, not measured load current. `ON` / `REG` indicate heating/regulation;
+`ERR` indicates a latched controller fault. Menus keep the current heating
+request; use both buttons to stop. After a fault, switch OFF before restarting.
 
 The full addressable panel is **96×16 pixels**, with a 192-byte framebuffer.
 The header keeps its 6×10 glyphs with blank padding clipped to eight rows;
@@ -286,7 +295,7 @@ OCRAM layout: `cargo run --release --no-default-features --features fpu`.
 
 | Component | Source and validated revision | Role |
 |---|---|---|
-| `bl706-hal` / `bl706-pac` / `bl706-ble` | [bl706-embassy](https://github.com/okhsunrog/bl706-embassy), [native BLE port merged into main](https://github.com/okhsunrog/bl706-embassy/commit/1457dd6b21c3f43a3daa822076499f4581c1c491) | Startup, interrupts, FPU context, peripherals, radio controller and Embassy integration |
+| `bl706-hal` / `bl706-pac` / `bl706-ble` | [bl706-embassy](https://github.com/okhsunrog/bl706-embassy), [timer divisor and interrupt access fixes](https://github.com/okhsunrog/bl706-embassy/commit/464c096db03972950ef9e4dff6b6c23466ae9153), [explicit compare acknowledgement](https://github.com/okhsunrog/bl706-embassy/commit/036c67cf1dca44856fd9ae19b4f82d6ce33da521) | Startup, interrupts, FPU context, peripherals, radio controller and Embassy integration |
 | `fusb302b` | [0.2.0 on crates.io](https://crates.io/crates/fusb302b/0.2.0), [release source](https://github.com/okhsunrog/fusb302b/tree/v0.2.0) | Async FUSB302B PD PHY |
 | `usbpd` / `usbpd-traits` | [official 3.1.0 revision](https://github.com/elagil/usbpd/commit/b1f0bb9720e362039ac5e5a511199c828da26c04) | PD policy engine, including EPR |
 
@@ -302,7 +311,8 @@ are declared in [Cargo.toml](Cargo.toml) and recorded in [Cargo.lock](Cargo.lock
 | Shared I²C | GPIO10 SCL / GPIO11 SDA, AF6, nominal 300 kHz |
 | FUSB302B | I²C `0x22`, INT_N GPIO16 active low |
 | Buttons | `+` GPIO25 / `-` GPIO28, active high with pull-downs |
-| Heater drive | GPIO21, held low |
+| Heater drive | GPIO21 / PWM1, timer-limited carrier bursts; OFF at boot |
+| Cartridge probe | GPIO24, off/on/off resistance sensing with heating stopped |
 
 The I²C setup enables SCL synchronization and a one-cycle deglitch filter.
 Pinecil leaves the FUSB302B VBUS sense pin disconnected; the integration uses
@@ -344,6 +354,7 @@ Hardware results and diagnostic history:
 - [28 V EPR traces, timing and I²C cancellation investigation](docs/epr-bringup.md).
 
 - [Combined BLE, UI, measurements and 28 V EPR validation](docs/ble-integration.md).
+- [Heater control and qualification](docs/heating.md).
 
 The default BLE image and standalone example are built, linted and audited in CI. Hardware GATT tests
 require a connected Pinecil and a Bluetooth adapter and are run separately.

@@ -20,7 +20,7 @@ pub type StateWatch<M> = Watch<M, AppState, 3>;
 pub type StateReceiver<'a, M> = Receiver<'a, M, AppState, 3>;
 
 /// The latest application snapshot. Negotiated power is not an ADC measurement.
-/// Heater control is not implemented; changing the setpoint never enables it.
+/// Changing the setpoint alone never enables heating; a two-button hold does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AppState {
     pub ui: Ui,
@@ -112,7 +112,7 @@ mod tests {
         drive(application.as_mut());
 
         let state = display.try_get().unwrap();
-        assert_eq!(state.ui.setpoint_c, 400);
+        assert_eq!(state.ui.setpoint_c, crate::ui::MAX_SETPOINT_C);
         assert_eq!(state.ui.screen, Screen::Brightness);
         assert_eq!(state.ui.brightness_level(), 3);
         assert_eq!(

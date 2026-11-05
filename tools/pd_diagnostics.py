@@ -9,6 +9,8 @@ import sys
 
 p = argparse.ArgumentParser()
 p.add_argument('--start-pd', action='store_true')
+p.add_argument('--heater-command', type=int, choices=range(1, 7),
+               help='bounded heater qualification command (heater-diagnostics build only)')
 p.add_argument('--seconds', type=float, default=15)
 p.add_argument('--command', type=int, choices=(1, 2), default=1, help='1: start PD; 2: test I2C cancellation, then wait again')
 p.add_argument('--trace-output')
@@ -19,7 +21,7 @@ a = p.parse_args()
 symbols = {}
 for line in subprocess.check_output(['readelf', '-sW', a.elf], text=True).splitlines():
     fields = line.split()
-    if len(fields) >= 8 and fields[-1] in ('PD_START', '_SEGGER_RTT', 'PD_TRACE', 'PD_TRACE_COUNT', 'PD_VERBOSE_HEARTBEAT'):
+    if len(fields) >= 8 and fields[-1] in ('PD_START', '_SEGGER_RTT', 'PD_TRACE', 'PD_TRACE_COUNT', 'PD_VERBOSE_HEARTBEAT', 'HEATER_TEST_COMMAND'):
         symbols[fields[-1]] = int(fields[1], 16)
 control = symbols['_SEGGER_RTT']
 start_flag = symbols.get('PD_START')
@@ -115,7 +117,17 @@ def trace():
 capture_error = None
 try:
     print(f'Capture host monotonic={time.monotonic():.6f}', flush=True)
+    if not read_bytes(control, 16).startswith(b'SEGGER RTT'):
+        raise RuntimeError('RTT signature mismatch; use the exact ELF flashed on the target')
     drain()
+    if a.heater_command is not None:
+        mailbox = symbols.get('HEATER_TEST_COMMAND')
+        if mailbox is None or not 0x22014000 <= mailbox < 0x22024000 - 8:
+            raise RuntimeError('ELF has no heater test RAM mailbox; use heater-diagnostics')
+        if words(mailbox, 1)[0] != 0x48545231:
+            raise RuntimeError('Heater mailbox ABI mismatch; use the exact flashed ELF')
+        print(f'Heater command={a.heater_command} host monotonic={time.monotonic():.6f}', flush=True)
+        write(mailbox + 4, a.heater_command)
     if a.verbose_heartbeat is not None:
         assert 'PD_VERBOSE_HEARTBEAT' in symbols, 'build with pd-diagnostics for heartbeat profiling'
         write(symbols['PD_VERBOSE_HEARTBEAT'], a.verbose_heartbeat)

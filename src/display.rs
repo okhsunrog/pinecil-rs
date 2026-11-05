@@ -18,6 +18,7 @@ use embedded_graphics::{
 };
 use heapless::String;
 use pinecil_rs::app::{AppState, StateReceiver};
+use pinecil_rs::heater::State as HeaterState;
 use pinecil_rs::power::PowerStatus;
 use pinecil_rs::sensors::{Reading, SensorFault};
 use pinecil_rs::ui::Screen;
@@ -53,7 +54,15 @@ async fn render<D: DrawTarget<Color = BinaryColor>>(
     }
     let footer = match ui.screen {
         Screen::Main => {
-            write!(top, "SET {}C", ui.setpoint_c).unwrap();
+            match measurements.heater.state {
+                HeaterState::Fault(fault) => write!(top, "ERR {}", fault.label()).unwrap(),
+                HeaterState::Heating | HeaterState::Regulating => {
+                    if let Reading::Value(tip) = measurements.tip_centi_c {
+                        write!(top, "{}/{}C", tip / 100, measurements.heater.target_c).unwrap();
+                    }
+                }
+                HeaterState::Off => write!(top, "SET {}C", ui.setpoint_c).unwrap(),
+            }
             power_text.as_str()
         }
         Screen::Brightness => {
@@ -96,7 +105,13 @@ async fn render<D: DrawTarget<Color = BinaryColor>>(
         let mut header = display.clipped(&Rectangle::new(Point::zero(), Size::new(96, 8)));
         let large = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
         Text::with_baseline(&top, Point::zero(), large, Baseline::Top).draw(&mut header)?;
-        Text::with_baseline("OFF", Point::new(78, 0), large, Baseline::Top).draw(&mut header)?;
+        let status = match measurements.heater.state {
+            HeaterState::Off => "OFF",
+            HeaterState::Heating => "ON",
+            HeaterState::Regulating => "REG",
+            HeaterState::Fault(_) => "ERR",
+        };
+        Text::with_baseline(status, Point::new(78, 0), large, Baseline::Top).draw(&mut header)?;
     }
     #[cfg(feature = "pd-diagnostics")]
     pd_trace::profile(7, header_start);
@@ -153,7 +168,7 @@ pub async fn run(
             needs_init = false;
             applied_contrast = None;
             last_frame = None;
-            log::info!("OLED ready; heater OFF");
+            log::info!("OLED ready");
         }
         // Always use the latest snapshot after initialization or recovery.
         // State changes during a flush are coalesced, never queued as frames.
@@ -177,6 +192,13 @@ pub async fn run(
             previous.ui != ui
                 || previous.power != state.power
                 || previous_alive != alive
+                || previous.measurements.heater.state != state.measurements.heater.state
+                || ui.screen == Screen::Main
+                    && matches!(
+                        state.measurements.heater.state,
+                        HeaterState::Heating | HeaterState::Regulating
+                    )
+                    && previous.measurements.tip_centi_c != state.measurements.tip_centi_c
                 || ui.screen == Screen::Measurements && previous.measurements != state.measurements
         });
         if redraw {

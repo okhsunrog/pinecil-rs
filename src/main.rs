@@ -6,6 +6,9 @@ mod buttons;
 mod control;
 mod display;
 mod heartbeat;
+mod heater_io;
+#[cfg(feature = "heater-diagnostics")]
+mod heater_test;
 mod pd;
 #[cfg(feature = "pd-diagnostics")]
 mod pd_trace;
@@ -48,6 +51,10 @@ async fn ble_host(transport: bl706_ble::NativeTransport) {
 #[unsafe(no_mangle)]
 extern "C" fn __bl706_main() -> ! {
     let b = board::board();
+    let output = heater_io::HeaterOutput::new(b.heater, b.heater_timer);
+    // The radio is initialized but not advertising. Run deliberate polling
+    // stalls before starting its worker/host or the PD executor.
+    let timer_ok = output.self_test();
     let bus = I2C_BUS.init(Mutex::new(b.i2c));
     // PD preempts framebuffer rendering and thread-mode formatting. Async
     // I2C retains shared bus ownership; no blocking wait is used in the IRQ.
@@ -61,9 +68,18 @@ extern "C" fn __bl706_main() -> ! {
             s.spawn(ble_host(b.ble.0).unwrap());
         }
         s.spawn(heartbeat::run(b.log).unwrap());
-        s.spawn(control::run(b.adc, b.heater_off, b.tip_probe).unwrap());
-        s.spawn(buttons::plus(b.key_plus).unwrap());
-        s.spawn(buttons::minus(b.key_minus).unwrap());
+        s.spawn(
+            control::run(
+                b.adc,
+                output,
+                b.tip_probe,
+                b.watchdog,
+                APP_STATE.receiver().unwrap(),
+                timer_ok,
+            )
+            .unwrap(),
+        );
+        s.spawn(buttons::run(b.key_plus, b.key_minus).unwrap());
         s.spawn(application().unwrap());
         s.spawn(
             display::run(

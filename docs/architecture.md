@@ -12,27 +12,36 @@ PD interrupt task -- latest PowerStatus watch ------>| AppState watch
                          |                          |
                          +-- other subscribers      +--> Display task
                                                     +--> future subscribers
-ADC / heater-off controller -- Measurements watch -->|
+ADC / tip controller ------- Measurements watch ---->|
+       ^                                            |
+       +------------ UI request from AppState -------+
+
+Tip controller -- one bounded burst --> TIMER0/PWM1 owner
+                                      | cutoff in ISR
 ```
 
 ## Responsibilities
 
 | Module | Owner and responsibility |
 | --- | --- |
-| `board.rs` | Initializes GPIO, I2C, ADC, RTT logging and the heater-off output. |
+| `board.rs` | Initializes GPIO, I2C, ADC, RTT, disabled heater PWM, cutoff timer and stopped watchdog. |
 | `main.rs` | Wires shared resources and starts the thread and PD executors. |
-| `buttons.rs` | Owns button GPIOs, debounces input and publishes short/long presses. |
+| `buttons.rs` / `button_gestures.rs` | Own button GPIOs, debounce input and recognize short/long presses and two-button chords. |
 | `app.rs` | Owns UI settings and combines buttons, power status and measurements. Runs without display or GPIO dependencies and is tested on the host. |
 | `ui.rs` | Implements bounded setpoint/brightness changes and page transitions. |
 | `display.rs` | Owns the OLED/reset pin, draws snapshots, applies brightness and retries initialization or recovery after errors. |
 | `pd.rs` / `power.rs` | Own the FUSB302B/PD engine and select an allowed power contract. |
-| `control.rs` / `sensors.rs` | Own ADC and the heater-off output; acquire independent sensor scans and convert nominal readings. |
+| `control.rs` / `sensors.rs` | Own ADC, resistance probe and watchdog; acquire independent scans and convert nominal readings. |
+| `heater.rs` | Hardware-independent PI, power budget, resistance bins and latched interlocks. |
+| `heater_io.rs` | Own PWM1/GPIO21 and TIMER0; end each carrier burst in the timer ISR. |
 | `heartbeat.rs` | Emits liveness diagnostics independently of acquisition. |
 | `ble.rs` | Owns the shared Trouble GATT counter service. Native radio ownership lives in the controller worker; GATT writes do not change application settings or heater state. |
 
-The controller is read-only and holds the heater output low. The setpoint is
-UI state only. Future regulation must receive settings and power status
-independently of display activity; PWM and heating are not implemented.
+The controller starts OFF. It reads UI requests from its own AppState
+subscription and the latest PD status directly from the power watch. OLED or
+BLE activity never owns the output. TIMER0 ends each burst without waiting for
+the acquisition task; another valid ADC frame is required to rearm it.
+See [tip control](heating.md) for limits, watchdog behavior and qualification.
 
 ## Events and snapshots
 
