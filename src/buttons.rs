@@ -30,13 +30,13 @@ async fn run<const N: u8>(mut pin: Input<N>, button: Button) {
     loop {
         stable(&mut pin, true).await;
         let start = Instant::now();
-        rtt_target::rprintln!("button {:?} pressed gpio={}", button, N);
+        log::debug!("button {:?} pressed gpio={}", button, N);
         let event = if with_timeout(HOLD, stable(&mut pin, false)).await.is_err() {
             let event = ButtonEvent::Long(button);
             EVENTS.send(event).await;
-            rtt_target::rprintln!("button {:?} event={:?}", button, event);
+            log::debug!("button {:?} event={:?}", button, event);
             stable(&mut pin, false).await;
-            rtt_target::rprintln!(
+            log::debug!(
                 "button {:?} released after {} ms",
                 button,
                 start.elapsed().as_millis()
@@ -46,7 +46,7 @@ async fn run<const N: u8>(mut pin: Input<N>, button: Button) {
             ButtonEvent::Short(button)
         };
         EVENTS.send(event).await;
-        rtt_target::rprintln!(
+        log::debug!(
             "button {:?} event={:?} held={} ms",
             button,
             event,

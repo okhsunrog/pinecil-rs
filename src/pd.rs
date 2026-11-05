@@ -144,7 +144,7 @@ pub async fn run(i2c: SharedI2c, irq: Input<16>) {
         }
         i2c
     };
-    #[cfg(feature = "pd-manual-start")]
+    #[cfg(feature = "pd-diagnostics")]
     let i2c = crate::pd_trace::TracedI2c(i2c);
     // Pinecil V2 leaves the FUSB302 VBUS sense pin disconnected (IronOS:
     // NEEDS_VBUS_PROBE=0). The powered board must not wait on STATUS0.VBUSOK.

@@ -12,12 +12,14 @@ p.add_argument('--start-pd', action='store_true')
 p.add_argument('--seconds', type=float, default=15)
 p.add_argument('--command', type=int, choices=(1, 2), default=1, help='1: start PD; 2: test I2C cancellation, then wait again')
 p.add_argument('--trace-output')
+p.add_argument('--stream-output', help='JSONL output for binary RTT channel 1 (pd-diagnostics)')
+p.add_argument('--verbose-heartbeat', type=int, choices=(0, 1), help='benchmark old verbose logging on stable 5 V only')
 p.add_argument('elf', nargs='?', default='target/riscv32imfc-unknown-none-elf/release/pinecil-rs')
 a = p.parse_args()
 symbols = {}
 for line in subprocess.check_output(['readelf', '-sW', a.elf], text=True).splitlines():
     fields = line.split()
-    if len(fields) >= 8 and fields[-1] in ('PD_START', '_SEGGER_RTT', 'PD_TRACE', 'PD_TRACE_COUNT'):
+    if len(fields) >= 8 and fields[-1] in ('PD_START', '_SEGGER_RTT', 'PD_TRACE', 'PD_TRACE_COUNT', 'PD_VERBOSE_HEARTBEAT'):
         symbols[fields[-1]] = int(fields[1], 16)
 control = symbols['_SEGGER_RTT']
 start_flag = symbols.get('PD_START')
@@ -55,17 +57,38 @@ def read_bytes(addr, n):
     data = b''.join(struct.pack('<I', w) for w in words(aligned, (skip+n+3)//4))
     return data[skip:skip+n]
 
-def drain():
-    name, buf, size, wr, rd, flags = words(control+24, 6)
-    assert size in (4096, 16384) and wr < size and rd < size, (name, buf, size, wr, rd, flags)
+def drain_channel(index):
+    descriptor = control + 24 + index * 24
+    name, buf, size, wr, rd, flags = words(descriptor, 6)
+    assert size in (4096, 8192, 16384) and wr < size and rd < size, (name, buf, size, wr, rd, flags)
     if wr == rd:
-        return
+        return b''
     if wr > rd:
         data = read_bytes(buf + rd, wr-rd)
     else:
         data = read_bytes(buf+rd, size-rd) + read_bytes(buf, wr)
-    print(data.decode(errors='replace'), end='', flush=True)
-    write(control+40, wr)
+    write(descriptor+16, wr)
+    return data
+
+stream = open(a.stream_output, 'w') if a.stream_output else None
+pending_stream = b''
+def drain():
+    global pending_stream
+    print(drain_channel(0).decode(errors='replace'), end='', flush=True)
+    if stream is None:
+        return
+    pending_stream += drain_channel(1)
+    while len(pending_stream) >= 44:
+        start, end, meta, *data = struct.unpack('<11I', pending_stream[:44])
+        pending_stream = pending_stream[44:]
+        length = (meta >> 17) & 8191
+        record = dict(host_monotonic=time.monotonic(), start_us=start, end_us=end,
+            duration_us=(end-start)&0xffffffff, address=meta&127,
+            register=(meta>>8)&255, read=bool(meta&(1<<16)), length=length,
+            error=bool(meta&(1<<30)), cancelled=bool(meta&(1<<31)),
+            hex=b''.join(struct.pack('<I', x) for x in data)[:length].hex())
+        stream.write(json.dumps(record) + '\n')
+    stream.flush()
 
 events = []
 trace_count = 0
@@ -93,6 +116,10 @@ capture_error = None
 try:
     print(f'Capture host monotonic={time.monotonic():.6f}', flush=True)
     drain()
+    if a.verbose_heartbeat is not None:
+        assert 'PD_VERBOSE_HEARTBEAT' in symbols, 'build with pd-diagnostics for heartbeat profiling'
+        write(symbols['PD_VERBOSE_HEARTBEAT'], a.verbose_heartbeat)
+        print(f'PD_VERBOSE_HEARTBEAT={a.verbose_heartbeat}', flush=True)
     if a.start_pd:
         assert start_flag is not None, 'ELF has no PD_START; build with pd-manual-start'
         print(f'Writing PD_START={a.command} at host monotonic={time.monotonic():.6f}', flush=True)
@@ -106,6 +133,8 @@ except Exception as e:
     capture_error = e
     print(f'\nCAPTURE ERROR at host monotonic={time.monotonic():.6f}: {e!r}', flush=True)
 finally:
+    if stream is not None:
+        stream.close()
     if a.trace_output and 'PD_TRACE' in symbols:
         try:
             trace()

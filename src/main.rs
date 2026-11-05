@@ -4,7 +4,7 @@
 mod board;
 mod buttons;
 mod pd;
-#[cfg(feature = "pd-manual-start")]
+#[cfg(feature = "pd-diagnostics")]
 mod pd_trace;
 
 use bl706_hal::{gpio, i2c::I2c};
@@ -40,24 +40,43 @@ async fn heartbeat(mut log: Logger, mut heater_off: gpio::Output<21>) {
     let mut tick = 0u32;
     loop {
         heater_off.set_low();
-        let _ = writeln!(
-            log,
-            "heartbeat tick={tick} us={} pads={:08x} gpio_irq={:08x}",
-            Instant::now().as_micros(),
-            bl706_hal::pac::GLB.GPIO_CFGCTL30().read().0,
-            bl706_hal::pac::GLB.GPIO_INT_STAT1().read().0,
-        );
+        #[cfg(feature = "pd-diagnostics")]
+        let start = Instant::now();
+        #[cfg(feature = "pd-diagnostics")]
+        if pd_trace::PD_VERBOSE_HEARTBEAT.load(bl706_hal::portable_atomic::Ordering::Relaxed) != 0 {
+            let gpio_start = Instant::now();
+            let pads = bl706_hal::pac::GLB.GPIO_CFGCTL30().read().0;
+            let gpio_irq = bl706_hal::pac::GLB.GPIO_INT_STAT1().read().0;
+            pd_trace::profile(2, gpio_start);
+            let format_start = Instant::now();
+            let _ = writeln!(
+                log,
+                "heartbeat tick={tick} us={} pads={:08x} gpio_irq={:08x}",
+                start.as_micros(),
+                pads,
+                gpio_irq,
+            );
+            pd_trace::profile(3, format_start);
+        } else {
+            let _ = writeln!(log, "heartbeat tick={tick}");
+        }
+        #[cfg(not(feature = "pd-diagnostics"))]
+        let _ = writeln!(log, "heartbeat tick={tick}");
+        #[cfg(feature = "pd-diagnostics")]
+        pd_trace::profile(1, start);
         tick = tick.wrapping_add(1);
         Timer::after_secs(1).await;
     }
 }
 
-fn render<D: DrawTarget<Color = BinaryColor>>(
+async fn render<D: DrawTarget<Color = BinaryColor>>(
     display: &mut D,
     ui: &Ui,
     alive: bool,
     power: PowerStatus,
 ) -> Result<(), D::Error> {
+    #[cfg(feature = "pd-diagnostics")]
+    let prepare_start = Instant::now();
     display.clear(BinaryColor::Off)?;
     let mut top: String<24> = String::new();
     let mut power_text: String<32> = String::new();
@@ -84,6 +103,13 @@ fn render<D: DrawTarget<Color = BinaryColor>>(
             "+/- HOLD+:BACK"
         }
     };
+    #[cfg(feature = "pd-diagnostics")]
+    pd_trace::profile(6, prepare_start);
+    // Drawing is CPU work. Bound each poll of this task so the PD response
+    // timer can be serviced even while the framebuffer is being prepared.
+    embassy_futures::yield_now().await;
+    #[cfg(feature = "pd-diagnostics")]
+    let header_start = Instant::now();
     {
         // These uppercase 6x10 glyphs fit in the first eight pixel rows.
         // Clip their blank font padding to give the footer a full eight rows.
@@ -92,6 +118,11 @@ fn render<D: DrawTarget<Color = BinaryColor>>(
         Text::with_baseline(&top, Point::zero(), large, Baseline::Top).draw(&mut header)?;
         Text::with_baseline("OFF", Point::new(78, 0), large, Baseline::Top).draw(&mut header)?;
     }
+    #[cfg(feature = "pd-diagnostics")]
+    pd_trace::profile(7, header_start);
+    embassy_futures::yield_now().await;
+    #[cfg(feature = "pd-diagnostics")]
+    let footer_start = Instant::now();
     Text::with_baseline(
         footer,
         Point::new(0, 8),
@@ -104,6 +135,9 @@ fn render<D: DrawTarget<Color = BinaryColor>>(
             .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
             .draw(display)?;
     }
+    #[cfg(feature = "pd-diagnostics")]
+    pd_trace::profile(8, footer_start);
+    embassy_futures::yield_now().await;
     Ok(())
 }
 
@@ -131,17 +165,16 @@ async fn display(i2c: SharedI2c, reset: gpio::Pin<3>) {
         rtt_target::rprintln!("OLED init failed: {:?}; heartbeat continues", error);
         return;
     }
-    rtt_target::rprintln!(
-        "UI ready: screen={:?} setpoint={} heater=OFF contrast={}",
-        ui.screen,
-        ui.setpoint_c,
-        ui.contrast()
-    );
+    log::info!("UI ready; heater OFF");
     let mut alive = true;
     let mut power = PowerStatus::Waiting;
     let mut next_refresh = Instant::now() + Duration::from_secs(1);
     loop {
-        render(&mut oled, &ui, alive, power).unwrap();
+        #[cfg(feature = "pd-diagnostics")]
+        let render_start = Instant::now();
+        render(&mut oled, &ui, alive, power).await.unwrap();
+        #[cfg(feature = "pd-diagnostics")]
+        pd_trace::profile(4, render_start);
         if let Err(error) = oled.flush().await {
             rtt_target::rprintln!("OLED flush failed: {:?}; resetting display", error);
             Timer::after_millis(250).await;
@@ -165,7 +198,7 @@ async fn display(i2c: SharedI2c, reset: gpio::Pin<3>) {
             Either3::First(event) => {
                 let contrast = ui.contrast();
                 ui.handle(event);
-                rtt_target::rprintln!(
+                log::debug!(
                     "UI event={:?} screen={:?} setpoint={} heater=OFF contrast={}",
                     event,
                     ui.screen,
@@ -206,6 +239,10 @@ impl embedded_hal_async::i2c::I2c for DisplayI2c {
         if let Err(error) = &result {
             log::warn!("OLED I2C: {:?}", error);
         }
+        // A framebuffer flush performs many consecutive I2C transactions.
+        // Let the waiting PD task run after releasing the shared-bus mutex;
+        // otherwise this task can reacquire it for the entire flush.
+        embassy_futures::yield_now().await;
         result
     }
 }

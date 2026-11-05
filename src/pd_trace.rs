@@ -1,7 +1,30 @@
-//! Bounded RAM-only I2C trace for the manual PD diagnostic build.
+//! Bounded RAM I2C trace and RTT diagnostics for PD investigation.
 use crate::SharedI2c;
 use bl706_hal::portable_atomic::{AtomicU32, Ordering::Relaxed};
+use core::cell::RefCell;
 use embedded_hal_async::i2c::{ErrorType, I2c, Operation};
+
+static CHANNEL: critical_section::Mutex<RefCell<Option<rtt_target::UpChannel>>> =
+    critical_section::Mutex::new(RefCell::new(None));
+
+pub fn init_channel(channel: rtt_target::UpChannel) {
+    critical_section::with(|cs| *CHANNEL.borrow_ref_mut(cs) = Some(channel));
+}
+
+/// Set to one only on a stable 5 V source to benchmark the old verbose log.
+#[unsafe(no_mangle)]
+pub static PD_VERBOSE_HEARTBEAT: AtomicU32 = AtomicU32::new(0);
+
+/// CPU duration record: address zero, register identifying the measured stage.
+pub fn profile(stage: u8, start: embassy_time::Instant) {
+    let record = Record::new();
+    record.start_us.store(start.as_micros() as u32, Relaxed);
+    record
+        .end_us
+        .store(embassy_time::Instant::now().as_micros() as u32, Relaxed);
+    record.metadata.store(u32::from(stage) << 8, Relaxed);
+    record.stream();
+}
 
 #[repr(C)]
 pub struct Record {
@@ -25,6 +48,32 @@ impl Record {
             b[..chunk.len()].copy_from_slice(chunk);
             word.store(u32::from_le_bytes(b), Relaxed);
         }
+    }
+    fn stream(&self) {
+        // Fixed binary records avoid formatting packet dumps on the PD task's
+        // response path. NoBlockSkip drops a whole record if the host is absent.
+        let mut bytes = [0; 44];
+        let words = [
+            self.start_us.load(Relaxed),
+            self.end_us.load(Relaxed),
+            self.metadata.load(Relaxed),
+            self.data[0].load(Relaxed),
+            self.data[1].load(Relaxed),
+            self.data[2].load(Relaxed),
+            self.data[3].load(Relaxed),
+            self.data[4].load(Relaxed),
+            self.data[5].load(Relaxed),
+            self.data[6].load(Relaxed),
+            self.data[7].load(Relaxed),
+        ];
+        for (out, word) in bytes.as_chunks_mut::<4>().0.iter_mut().zip(words) {
+            out.copy_from_slice(&word.to_le_bytes());
+        }
+        critical_section::with(|cs| {
+            if let Some(channel) = &mut *CHANNEL.borrow_ref_mut(cs) {
+                channel.write(&bytes);
+            }
+        });
     }
 }
 #[unsafe(no_mangle)]
@@ -66,6 +115,9 @@ impl Guard {
             .end_us
             .store(embassy_time::Instant::now().as_micros() as u32, Relaxed);
         self.finished = true;
+        if !ok || (self.record.metadata.load(Relaxed) >> 8) & 255 == 0x43 {
+            self.record.stream();
+        }
     }
 }
 impl Drop for Guard {
@@ -75,6 +127,15 @@ impl Drop for Guard {
             self.record
                 .end_us
                 .store(embassy_time::Instant::now().as_micros() as u32, Relaxed);
+            self.record.stream();
+            let meta = self.record.metadata.load(Relaxed);
+            log::warn!(
+                "PD I2C cancelled reg={:02x} read={} len={} started={}",
+                (meta >> 8) & 255,
+                meta & (1 << 16) != 0,
+                (meta >> 17) & 8191,
+                self.record.start_us.load(Relaxed),
+            );
         }
     }
 }
@@ -84,6 +145,7 @@ impl ErrorType for TracedI2c {
     type Error = <SharedI2c as ErrorType>::Error;
 }
 
+#[cfg(feature = "pd-manual-start")]
 pub async fn cancellation_test(i2c: &mut SharedI2c) {
     use embassy_futures::select::{Either, select};
     use embassy_time::Timer;
@@ -166,6 +228,15 @@ impl I2c for TracedI2c {
             guard.record.data(bytes);
         }
         guard.finish(result.is_ok());
+        if let Err(error) = &result {
+            log::warn!(
+                "PD I2C reg={:02x} read={} len={}: {:?}",
+                register,
+                read,
+                len,
+                error
+            );
+        }
         result
     }
 }

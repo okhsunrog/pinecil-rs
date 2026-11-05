@@ -9,7 +9,8 @@ description = "Embassy application firmware for Pinecil V2 / BL706"
 [features]
 default = ["fpu"]
 fpu = ["bl706-hal/fpu"]
-pd-manual-start = []
+pd-diagnostics = []
+pd-manual-start = ["pd-diagnostics"]
 
 [dependencies]
 heapless = "0.9.3"
@@ -32,6 +33,7 @@ panic = "abort"
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 bl706-hal = { version = "0.1.0", features = ["flash"], git = "https://github.com/okhsunrog/bl706-embassy", rev = "27de879918f48f4c95131da8afe81dc894e3551b" }
+critical-section = "1.2.0"
 embassy-embedded-hal = "0.6.0"
 embassy-executor = { version = "0.10.0", default-features = false, features = ["platform-spin", "executor-thread"] }
 embassy-futures = "0.1.2"
@@ -39,7 +41,7 @@ embassy-sync = "0.8.0"
 embassy-time = "0.5.1"
 embedded-graphics = "0.8.2"
 embedded-hal-async = "1.0.0"
-fusb302b = { version = "0.1.0", features = ["log"], git = "https://github.com/okhsunrog/fusb302b", rev = "7037ff81dad132493ab31d191777e3b83a8b4f38" }
+fusb302b = { version = "0.2.0", features = ["log"] }
 log = { version = "0.4.35", features = ["release_max_level_info"] }
 rtt-target = "0.6.2"
 ssd1306 = { version = "0.10.0", features = ["async"] }

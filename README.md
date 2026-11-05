@@ -22,6 +22,11 @@ held low, the display shows OFF, and the setpoint is UI state only. Flashing
 this project replaces the firmware already installed on the iron, including
 IronOS. Hardware validation has been performed with the heater off.
 
+PD scheduling under UI load is still being investigated: missed response
+deadlines can trigger Hard Reset and a power cycle. The driver release does
+not resolve this application issue. See the [timing investigation](docs/pd-scheduling.md)
+for captures, measurements and the planned interrupt executor.
+
 ## Development hardware
 
 The maintainer uses a **Raspberry Pi Pico (RP2040) as the JTAG debug probe**.
@@ -73,7 +78,8 @@ RTT logs travel over the same JTAG connection. UART wiring is unnecessary.
 
 ## Build from a standalone clone
 
-Cargo fetches the HAL, PAC and FUSB302B driver from public Git repositories.
+Cargo fetches the HAL and PAC from public Git repositories and
+[`fusb302b 0.2.0`](https://crates.io/crates/fusb302b/0.2.0) from crates.io.
 Every Git dependency is pinned to a revision, and `Cargo.lock` is committed.
 Only this repository needs to be cloned; the build does not use sibling
 checkouts or local path overrides.
@@ -152,6 +158,27 @@ operation. Use a non-EPR 5 V USB source for programming. The diagnostic
 `pd-manual-start` feature leaves PD disabled after boot until explicitly started
 through the debugger; see [the EPR bring-up notes](docs/epr-bringup.md).
 
+For intermittent PD faults, build with `--features pd-diagnostics`. PD starts
+automatically, while RTT channel 1 carries fixed 44-byte binary records of FIFO
+transactions, I2C errors and cancelled operations. Channel 0 retains text logs.
+Both channels use `NoBlockSkip`; an absent reader cannot block the firmware.
+With OpenOCD running, capture both channels without resetting the target:
+
+```sh
+uv run --no-project tools/pd_diagnostics.py --seconds 300 \
+  --stream-output pd-i2c.jsonl > pd-rtt.log
+```
+
+The trace captures at most 32 data bytes per transaction. A cancelled bus future
+does not prove that the slave's FIFO position was preserved; correlate the trace
+with a PD sniffer and a voltage time series. `pd-manual-start` also enables this
+diagnostic transport.
+
+CPU timing records use address zero; stages are documented in
+[the timing investigation](docs/pd-scheduling.md). On a stable 5 V source,
+`--verbose-heartbeat 1` temporarily enables the old verbose heartbeat for
+profiling; restore the ordinary short log with `--verbose-heartbeat 0`.
+
 To prepare a bootable ELF without accessing hardware:
 
 ```sh
@@ -226,7 +253,7 @@ disables cache burst wrap for the SPI read mode validated on this board.
 | Component | Source and validated revision | Role |
 |---|---|---|
 | `bl706-hal` / `bl706-pac` | [bl706-embassy](https://github.com/okhsunrog/bl706-embassy), [I2C cancellation fix](https://github.com/okhsunrog/bl706-embassy/commit/27de879918f48f4c95131da8afe81dc894e3551b) | Startup, interrupts, FPU context, peripherals and Embassy integration |
-| `fusb302b` | [driver](https://github.com/okhsunrog/fusb302b), [hardware-validated revision](https://github.com/okhsunrog/fusb302b/commit/7037ff81dad132493ab31d191777e3b83a8b4f38) | Async FUSB302B PD PHY |
+| `fusb302b` | [0.2.0 on crates.io](https://crates.io/crates/fusb302b/0.2.0), [release source](https://github.com/okhsunrog/fusb302b/tree/v0.2.0) | Async FUSB302B PD PHY |
 | `usbpd` / `usbpd-traits` | [official 3.1.0 revision](https://github.com/elagil/usbpd/commit/b1f0bb9720e362039ac5e5a511199c828da26c04) | PD policy engine, including EPR |
 
 The `usbpd-traits` registry patch points to the same Git revision as the policy

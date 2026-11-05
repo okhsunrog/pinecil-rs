@@ -10,12 +10,17 @@ impl log::Log for RttLog {
     }
     fn log(&self, record: &log::Record<'_>) {
         if self.enabled(record.metadata()) {
-            rtt_target::rprintln!(
+            // Format outside RTT's critical section so an I2C FIFO interrupt
+            // can run while formatting a diagnostic packet dump.
+            let mut text = heapless::String::<256>::new();
+            let _ = writeln!(
+                text,
                 "{} us={} {}",
                 record.level(),
                 embassy_time::Instant::now().as_micros(),
                 record.args()
             );
+            rtt_target::rprint!("{}", text.as_str());
         }
     }
     fn flush(&self) {}
@@ -39,10 +44,19 @@ pub struct Board {
 }
 
 pub fn board() -> Board {
-    #[cfg(not(feature = "pd-manual-start"))]
+    #[cfg(not(feature = "pd-diagnostics"))]
     rtt_target::rtt_init_print!(rtt_target::ChannelMode::NoBlockSkip, 4096);
-    #[cfg(feature = "pd-manual-start")]
-    rtt_target::rtt_init_print!(rtt_target::ChannelMode::NoBlockSkip, 16384);
+    #[cfg(feature = "pd-diagnostics")]
+    {
+        let channels = rtt_target::rtt_init! {
+            up: {
+                0: { size: 8192, mode: rtt_target::ChannelMode::NoBlockSkip, name: "Terminal" }
+                1: { size: 8192, mode: rtt_target::ChannelMode::NoBlockSkip, name: "PD I2C" }
+            }
+        };
+        rtt_target::set_print_channel(channels.up.0);
+        crate::pd_trace::init_channel(channels.up.1);
+    }
     // Single core, before enabling interrupts or spawning any tasks.
     unsafe {
         log::set_logger_racy(&RTT_LOG).unwrap();
