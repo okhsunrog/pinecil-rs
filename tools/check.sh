@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+uv run --no-project tools/check_sources.py
 cargo fmt --all --check
 # Cargo discovers config from cwd, not --manifest-path. Run host-only tests
 # outside the embedded config so they use the pinned toolchain's prebuilt std.

@@ -146,6 +146,7 @@ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 [[package]]
 name = "bl706-hal"
 version = "0.1.0"
+source = "git+https://github.com/okhsunrog/bl706-embassy?rev=27de879918f48f4c95131da8afe81dc894e3551b#27de879918f48f4c95131da8afe81dc894e3551b"
 dependencies = [
  "bl706-pac",
  "critical-section",
@@ -164,6 +165,7 @@ dependencies = [
 [[package]]
 name = "bl706-pac"
 version = "0.1.0"
+source = "git+https://github.com/okhsunrog/bl706-embassy?rev=27de879918f48f4c95131da8afe81dc894e3551b#27de879918f48f4c95131da8afe81dc894e3551b"
 
 [[package]]
 name = "bumpalo"
@@ -723,6 +725,7 @@ checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 [[package]]
 name = "fusb302b"
 version = "0.1.0"
+source = "git+https://github.com/okhsunrog/fusb302b?rev=7037ff81dad132493ab31d191777e3b83a8b4f38#7037ff81dad132493ab31d191777e3b83a8b4f38"
 dependencies = [
  "device-driver",
  "embassy-time",
