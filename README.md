@@ -22,10 +22,11 @@ held low, the display shows OFF, and the setpoint is UI state only. Flashing
 this project replaces the firmware already installed on the iron, including
 IronOS. Hardware validation has been performed with the heater off.
 
-PD scheduling under UI load is still being investigated: missed response
-deadlines can trigger Hard Reset and a power cycle. The driver release does
-not resolve this application issue. See the [timing investigation](docs/pd-scheduling.md)
-for captures, measurements and the planned interrupt executor.
+PD runs on a software interrupt executor, preempting UI work while I2C
+interrupts can preempt PD. This addresses the missed EPR response deadlines
+seen with the earlier shared thread executor. Hardware measurements and the
+remaining recoverable OLED FIFO fault are documented in the
+[timing investigation](docs/pd-scheduling.md).
 
 ## Development hardware
 
@@ -252,7 +253,7 @@ disables cache burst wrap for the SPI read mode validated on this board.
 
 | Component | Source and validated revision | Role |
 |---|---|---|
-| `bl706-hal` / `bl706-pac` | [bl706-embassy](https://github.com/okhsunrog/bl706-embassy), [I2C cancellation fix](https://github.com/okhsunrog/bl706-embassy/commit/27de879918f48f4c95131da8afe81dc894e3551b) | Startup, interrupts, FPU context, peripherals and Embassy integration |
+| `bl706-hal` / `bl706-pac` | [bl706-embassy](https://github.com/okhsunrog/bl706-embassy), [preemptible software executor](https://github.com/okhsunrog/bl706-embassy/commit/75b485167197a9d5aeb53e1d64936b861889aa08) | Startup, interrupts, FPU context, peripherals and Embassy integration |
 | `fusb302b` | [0.2.0 on crates.io](https://crates.io/crates/fusb302b/0.2.0), [release source](https://github.com/okhsunrog/fusb302b/tree/v0.2.0) | Async FUSB302B PD PHY |
 | `usbpd` / `usbpd-traits` | [official 3.1.0 revision](https://github.com/elagil/usbpd/commit/b1f0bb9720e362039ac5e5a511199c828da26c04) | PD policy engine, including EPR |
 

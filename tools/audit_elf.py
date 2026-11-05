@@ -88,7 +88,7 @@ def audit(path, fpu=False, probes=False):
     sh = sections[".vectors"]
     vectors = struct.unpack_from("<80I", data, sh[4])
     assert sh[5] == 320
-    irq_sources = (7,25,48,49,52,53,60)
+    irq_sources = (3,7,25,48,49,52,53,60)
     assert all(vectors[i] == syms["bl706_irq_entry"] for i in irq_sources)
     assert all(v == syms["bl706_fatal_trap"] for i,v in enumerate(vectors) if i not in irq_sources)
     atomic = []

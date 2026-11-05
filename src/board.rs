@@ -34,6 +34,7 @@ impl core::fmt::Write for Logger {
 }
 
 pub struct Board {
+    pub software_interrupt: bl706_hal::executor::InterruptToken,
     pub log: Logger,
     pub heater_off: gpio::Output<21>,
     pub i2c: I2c,
@@ -73,6 +74,7 @@ pub fn board() -> Board {
     let mut i2c = I2c::new(p.i2c, p.pins.p10, p.pins.p11, p.clocks);
     i2c.set_frequency(p.clocks, 300_000).unwrap();
     let board = Board {
+        software_interrupt: p.software_interrupt,
         log: Logger,
         heater_off,
         i2c,

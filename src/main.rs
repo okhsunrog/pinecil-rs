@@ -31,6 +31,7 @@ use ssd1306::{I2CDisplayInterface, Ssd1306Async, prelude::*};
 use static_cell::StaticCell;
 
 static EXECUTOR: StaticCell<bl706_hal::Executor> = StaticCell::new();
+static PD_EXECUTOR: bl706_hal::InterruptExecutor = bl706_hal::InterruptExecutor::new();
 static I2C_BUS: StaticCell<Mutex<CriticalSectionRawMutex, I2c>> = StaticCell::new();
 pub type SharedI2c = I2cDevice<'static, CriticalSectionRawMutex, I2c>;
 
@@ -251,11 +252,15 @@ impl embedded_hal_async::i2c::I2c for DisplayI2c {
 extern "C" fn __bl706_main() -> ! {
     let b = board();
     let bus = I2C_BUS.init(Mutex::new(b.i2c));
+    // PD preempts framebuffer rendering and thread-mode formatting. Async
+    // I2C retains shared bus ownership; no blocking wait is used in the IRQ.
+    PD_EXECUTOR
+        .start(b.software_interrupt)
+        .spawn(pd::run(I2cDevice::new(bus), b.pd_irq).unwrap());
     EXECUTOR.init(bl706_hal::Executor::new()).run(|s| {
         s.spawn(heartbeat(b.log, b.heater_off).unwrap());
         s.spawn(buttons::plus(b.key_plus).unwrap());
         s.spawn(buttons::minus(b.key_minus).unwrap());
         s.spawn(display(I2cDevice::new(bus), b.oled_reset).unwrap());
-        s.spawn(pd::run(I2cDevice::new(bus), b.pd_irq).unwrap());
     })
 }

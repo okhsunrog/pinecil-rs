@@ -122,6 +122,23 @@ impl DevicePolicyManager for Policy {
 
 #[embassy_executor::task]
 pub async fn run(i2c: SharedI2c, irq: Input<16>) {
+    #[cfg(feature = "pd-diagnostics")]
+    {
+        use core::future::{Future, poll_fn};
+        let mut future = core::pin::pin!(run_inner(i2c, irq));
+        poll_fn(|cx| {
+            let start = embassy_time::Instant::now();
+            let result = future.as_mut().poll(cx);
+            crate::pd_trace::profile(9, start);
+            result
+        })
+        .await;
+    }
+    #[cfg(not(feature = "pd-diagnostics"))]
+    run_inner(i2c, irq).await;
+}
+
+async fn run_inner(i2c: SharedI2c, irq: Input<16>) {
     STATUS.signal(PowerStatus::Waiting);
     #[cfg(feature = "pd-manual-start")]
     {

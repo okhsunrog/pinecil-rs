@@ -2,9 +2,11 @@
 
 The [fusb302b 0.2.0 release](https://crates.io/crates/fusb302b/0.2.0) refactors
 the PHY driver. Application scheduling remains an open hardware issue.
-The current firmware runs PD, buttons, heartbeat and OLED on one cooperative
-thread executor. CPU work without an await delays all other tasks, including
-delivery of data that the I2C interrupt handler has already received.
+The original firmware ran PD, buttons, heartbeat and OLED on one cooperative
+thread executor. CPU work without an await delayed all other tasks, including
+delivery of data that the I2C interrupt handler had already received. The current
+candidate moves PD to the HAL's machine software interrupt executor, while
+buttons, heartbeat and OLED stay in thread mode.
 
 ## Hardware evidence, 2026-11-05
 
@@ -40,6 +42,24 @@ and 9–13 ms for framebuffer drawing. These are elapsed times from the MCU's
 nominal RC32M clock, not externally calibrated cycle measurements. OLED
 I2C FIFO errors were also observed and recovered; IRQ latency still needs review.
 
+A further test added yields between framebuffer preparation, header and footer.
+The longest drawing segment fell to about 7.3 ms, but a button/menu stress test
+still caused a reset. VBUS fell below 27 V at capture time 78.714 s and recovered
+at 80.768 s, matching the user's observed shutdown. The relevant MCU sequence:
+
+| MCU time, seconds | Operation |
+|---|---|
+| 58.222972–58.223818 | Write KeepAlive |
+| 58.233235–58.234846 | Read GoodCRC |
+| 58.239686–58.246529 | Draw header |
+| 58.250565–58.253278 | Read KeepAliveAck header and payload |
+| 58.254037–58.262650 | Cancel its four-byte CRC tail read |
+| 58.283683 | Report Hard Reset |
+
+The source's Ack and the PHY's automatic GoodCRC were present on the wire.
+There was no successful completion of the message read before the policy's
+response timeout. Cooperative yields alone did not resolve the issue.
+
 ## Current changes and remaining work
 
 - Keep routine button/UI diagnostics at debug level and use a short heartbeat.
@@ -47,17 +67,33 @@ I2C FIFO errors were also observed and recovered; IRQ latency still needs review
 - Yield between OLED I2C transactions, allowing a waiting PD task to acquire
   the shared bus.
 - Split framebuffer preparation, header and footer drawing with cooperative
-  yields. This last change has passed offline checks; its hardware validation
-  is pending.
+  yields. This improves scheduling opportunities but failed the EPR stress test.
 - Preserve binary diagnostics so timing can be checked without formatting
   packet dumps on the PD response path.
 
-An interrupt executor for PD is the next architectural step. It must use the
-BL706's CLIC/software interrupt route, keep polling bounded, and preserve the
-existing FPU context. The I2C ISR must remain able to service its two-word
-hardware FIFO promptly; CPU priority does not eliminate shared-bus contention
-or long interrupt-disabled sections. The present HAL has not implemented this
-executor yet.
+PD now runs on the HAL's
+[machine software interrupt executor](https://github.com/okhsunrog/bl706-embassy/blob/75b485167197a9d5aeb53e1d64936b861889aa08/docs/executor.md).
+The port passed its separate hardware test for preemption, timer/I2C wakeups,
+thread-to-IRQ mutex unlock and interrupted FPU context. A first non-preemptible port caused OLED FIFO errors at
+5 V. The HAL now gives peripheral ISRs a higher CLIC level than the software
+executor and preserves nested return/FP context. PD polls should still stay
+short; CPU priority does not eliminate shared-bus contention or long
+interrupt-disabled sections.
+
+The preemptible diagnostic build sustained EPR throughout a 420.067-second
+PD/ADC capture, including button/menu stress. After crossing 27 V at capture
+time 20.450 s, no sampled voltage fell below 27 V. The 360-second RTT/binary
+recording contained 958 KeepAlive/Ack pairs without a restart, FIFO error or
+cancelled FIFO read. Successful seven-byte FIFO reads took at most 2.407 ms;
+four-byte tails took at most 1.680 ms. The longest PD poll was 23.959 ms,
+including preemption; per-poll trace serialization happens after that measurement.
+
+One OLED FIFO error at MCU time 93.662 s triggered display recovery without
+losing EPR. This remains an I2C latency issue to investigate; the executor does
+not eliminate every FIFO fault. ADC recorded 419,434 samples with 636 missing
+samples in six gaps (largest 408 ms), so it is not a gap-free voltage trace.
+Continuous RTT and KeepAlive/Ack traffic provide independent restart evidence.
+The normal build without binary instrumentation is the next hardware check.
 
 ## Diagnostic records
 
@@ -84,6 +120,7 @@ CPU records use address zero and the register field as a stage identifier:
 | 6 | Clear buffer and prepare strings |
 | 7 | Draw header |
 | 8 | Draw footer and animation marker |
+| 9 | One PD task poll in the software interrupt, before trace serialization |
 
 For the legacy heartbeat comparison, use `--verbose-heartbeat 1` on stable
 5 V only and return to `--verbose-heartbeat 0` afterwards. Normal builds do
