@@ -181,7 +181,13 @@ does not require the ROM USB bootloader or a button press.
 
 When debugging an active **EPR** contract, halting the CPU also stops the PD
 KeepAlive task. The source can then reset VBUS and interrupt a debug or flash
-operation. Use a non-EPR 5 V USB source for programming. The diagnostic
+operation. Use a non-EPR 5 V USB source for the first installation. For repeated
+debugging on the same charger, build `cargo run --release --locked --features
+pd-spr-only`. This disables EPR entry and its advertised capability; fixed SPR
+contracts need no periodic KeepAlive. Cartridge-aware current limits still apply
+(for a 6.2 Ω cartridge the policy selects 15 V / 3 A). The default build retains EPR.
+Selecting this feature cannot alter the already-running image: leave EPR before
+the first flash, then subsequent SPR development avoids cable switching. The diagnostic
 `pd-manual-start` feature leaves PD disabled after boot until explicitly started
 through the debugger; see [the EPR bring-up notes](docs/epr-bringup.md).
 

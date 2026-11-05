@@ -2,7 +2,7 @@ use crate::SharedI2c;
 use bl706_hal::gpio::Input;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, watch::Watch};
 use embassy_time::Timer;
-use pinecil_rs::power::{Choice, EPR_OPERATIONAL_WATTS, PowerStatus, choose};
+use pinecil_rs::power::{Choice, EPR_ENABLED, EPR_OPERATIONAL_WATTS, PowerStatus, choose};
 use uom::si::{electric_current::milliampere, electric_potential::millivolt, power::watt};
 use usbpd::{
     protocol_layer::message::data::{
@@ -64,7 +64,11 @@ impl usbpd::sink::device_policy_manager::EprDevicePolicyManager for Policy {
 }
 impl DevicePolicyManager for Policy {
     async fn get_event(&mut self, caps: &SourceCapabilities) -> Event {
-        if !self.epr_attempted && !caps.is_epr_capabilities() && caps.epr_mode_capable() {
+        if EPR_ENABLED
+            && !self.epr_attempted
+            && !caps.is_epr_capabilities()
+            && caps.epr_mode_capable()
+        {
             self.epr_attempted = true;
             log::debug!(
                 "PD entering EPR: operational PDP {} W",
@@ -241,7 +245,11 @@ async fn run_inner(i2c: SharedI2c, mut irq: Input<16>) {
             }
         }
     };
-    log::info!("PD controller ready; SPR 20 V then EPR 28 V preferred");
+    if EPR_ENABLED {
+        log::info!("PD controller ready; SPR 20 V then EPR 28 V preferred");
+    } else {
+        log::info!("PD controller ready; SPR only, voltage constrained by cartridge current");
+    }
     let mut sink = Sink::<_, PdTimer, _>::new(
         driver,
         Policy {

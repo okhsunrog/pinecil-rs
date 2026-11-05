@@ -15,6 +15,10 @@ project_dir=$PWD
 toolchain_root=$(rustc --print sysroot)
 host_target=$(rustc -vV | awk '/^host:/ {print $2}')
 (cd ..; RUSTC="$toolchain_root/bin/rustc" "$toolchain_root/bin/cargo" test --locked --manifest-path "$project_dir/Cargo.toml" --lib --target "$host_target")
+(cd ..; RUSTC="$toolchain_root/bin/rustc" "$toolchain_root/bin/cargo" test --locked --manifest-path "$project_dir/Cargo.toml" --lib --features pd-spr-only --target "$host_target")
+cargo clippy --release --locked --features pd-spr-only --bin pinecil-rs -- -D warnings
+cargo build --release --locked --features pd-spr-only
+uv run --no-project tools/audit_elf.py
 cargo clippy --release --locked --no-default-features --features fpu --bin pinecil-rs -- -D warnings
 cargo build --release --locked --no-default-features --features fpu
 uv run --no-project tools/audit_elf.py

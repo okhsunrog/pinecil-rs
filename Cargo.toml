@@ -13,6 +13,8 @@ ble = ["fpu", "dep:bl706-ble", "dep:bt-hci", "dep:trouble-host"]
 fpu = ["bl706-hal/fpu"]
 pd-diagnostics = []
 pd-manual-start = ["pd-diagnostics"]
+# Development on a fixed SPR contract avoids EPR KeepAlive during debugger halts.
+pd-spr-only = []
 heater-diagnostics = []
 
 [dependencies]

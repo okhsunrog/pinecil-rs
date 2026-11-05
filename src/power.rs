@@ -6,6 +6,7 @@ use usbpd::protocol_layer::message::data::{
 
 pub const TARGET_MV: u32 = 20_000;
 pub const EPR_TARGET_MV: u32 = 28_000;
+pub const EPR_ENABLED: bool = !cfg!(feature = "pd-spr-only");
 // SPR does not perform cable-current discovery. Successful EPR entry includes
 // the source's EPR cable qualification; still never exceed the advertised PDO.
 pub const SPR_MAX_CURRENT_MA: u32 = 3_000;
@@ -91,7 +92,7 @@ pub fn choose(caps: &SourceCapabilities, resistance_mohm: Option<u32>) -> Option
         .with_raw_max_operating_current((ma / 10) as u16)
         .with_no_usb_suspend(true)
         .with_usb_communications_capable(false)
-        .with_epr_mode_capable(epr || caps.epr_mode_capable());
+        .with_epr_mode_capable(epr || (EPR_ENABLED && caps.epr_mode_capable()));
     Some(Choice {
         request: if epr {
             // EPR_Request always includes both the RDO and a copy of the PDO,
@@ -144,6 +145,29 @@ mod tests {
     fn respects_source_current_limit() {
         let c = choose(&caps(&[(5000, 3000), (20000, 1500)]), None).unwrap();
         assert_eq!((c.mv, c.ma), (20000, 1500));
+    }
+
+    #[test]
+    fn spr_build_does_not_advertise_epr_entry_capability() {
+        let mut c = caps(&[(5000, 3000), (15000, 3000)]);
+        let pdos = c
+            .pdos()
+            .iter()
+            .enumerate()
+            .map(|(i, &p)| match p {
+                PowerDataObject::FixedSupply(f) if i == 0 => {
+                    PowerDataObject::FixedSupply(f.with_epr_mode_capable(true))
+                }
+                _ => p,
+            })
+            .collect();
+        c = SourceCapabilities::new_with_pdos(pdos);
+        let choice = choose(&c, Some(6200)).unwrap();
+        let PowerSource::FixedVariableSupply(r) = choice.request else {
+            panic!()
+        };
+        assert_eq!(r.epr_mode_capable(), EPR_ENABLED);
+        assert_eq!(choice.mv, 15000);
     }
 
     #[test]
@@ -278,7 +302,7 @@ mod tests {
         let PowerSource::FixedVariableSupply(r) = c.request else {
             panic!()
         };
-        assert!(r.epr_mode_capable());
+        assert_eq!(r.epr_mode_capable(), EPR_ENABLED);
         let c = choose(&caps(&[(5000, 3000), (20000, 5000)]), None).unwrap();
         let PowerSource::FixedVariableSupply(r) = c.request else {
             panic!()
