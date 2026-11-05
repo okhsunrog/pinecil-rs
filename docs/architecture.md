@@ -81,8 +81,9 @@ independent/late subscribers, and ignored events that should not redraw. It
 also builds normal and diagnostic firmware, runs Clippy, and audits XIP/FPU
 and unsupported atomic instructions.
 
-The application/display separation and read-only controller have not yet been
-flashed or hardware-tested. See the [acquisition contract](measurements.md).
+The application/display separation and read-only controller have been flashed,
+but async acquisition still needs a successful hardware test after correcting
+ADC interrupt routing. See the [acquisition contract](measurements.md).
 The earlier hardware results in [PD scheduling](pd-scheduling.md) apply to the
 previous image. The next hardware check should include 5 V flashing, cold boot,
 button/menu/brightness stress and simultaneous PD/ADC capture at 28 V EPR.

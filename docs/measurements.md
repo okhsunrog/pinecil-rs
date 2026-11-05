@@ -10,7 +10,7 @@ read-only stage of a tip controller, not a heater regulator.
 - [Pinecil V2 production schematic](https://files.pine64.org/doc/Pinecil/Pinecil_schematic_v2.0_20220608.pdf).
 - [IronOS Pinecil V2 pin mapping](https://github.com/Ralim/IronOS/blob/c7413e0d2adfd43156510d4ccbd109cf352ca335/source/Core/BSP/Pinecilv2/Pins.h)
   and [ADC setup / analog-setting investigation](https://github.com/Ralim/IronOS/blob/c7413e0d2adfd43156510d4ccbd109cf352ca335/source/Core/BSP/Pinecilv2/Setup.cpp).
-- [BL706 HAL ADC contract](https://github.com/okhsunrog/bl706-embassy/blob/75b485167197a9d5aeb53e1d64936b861889aa08/docs/analog.md).
+- [BL706 HAL ADC contract](https://github.com/okhsunrog/bl706-embassy/blob/a2cc082defd0e35cdcecb342dd2df4c4e507834b/docs/analog.md).
 - [TDK NTCG163JF103FTDS datasheet](https://product.tdk.com/system/files/dam/doc/product/sensor/ntc/chip-ntc-thermistor/data_sheet/datasheet_ntcg163jf103ftds.pdf):
   10 kohm at 25 C, B25/50 = 3380 K, rated temperature range -40..125 C.
 - Numerical sensor reference points are documented by the
@@ -93,8 +93,16 @@ tip offset/handle compensation, invalid sensor inputs and propagation of new
 sensor faults through application state. CI also builds normal/diagnostic
 images, runs Clippy and checks XIP/FPU layout and unsupported atomics.
 
-This acquisition code has not yet been run on hardware. The HAL's original ADC
-documentation also marks its physical behavior unverified. Hardware checks must
-verify scan tags, completion, gain trim and stable samples; compare VIN with
-KM003C at 5 V and later 20/28 V, check plausible room-temperature handle/tip
-readings, and test absent-tip behavior while keeping the heater disabled.
+The first hardware run on 2026-11-05 read a valid eFuse gain coefficient
+(denominator 1981), but all async scans timed out. A separate manual conversion
+produced four FIFO words with the configured positive channel and negative tag
+23. The HAL had selected peripheral number 25 as a CLIC interrupt directly,
+omitting RISC-V's IRQ base of 16. ADC needs IRQ41; the same audit corrected PWM
+to IRQ50. The [HAL correction](https://github.com/okhsunrog/bl706-embassy/commit/a2cc082defd0e35cdcecb342dd2df4c4e507834b)
+updates generated metadata, dispatch, startup vectors and ELF checks.
+
+The corrected image is built but has not yet completed hardware validation.
+Remaining checks are async scan completion and stable samples; compare VIN with
+KM003C, check plausible room-temperature handle/tip readings, and test absent-tip
+behavior while keeping the heater disabled. A manual FIFO result does not prove
+the async driver or absolute voltage/temperature accuracy.
