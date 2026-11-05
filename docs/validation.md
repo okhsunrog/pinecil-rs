@@ -46,4 +46,12 @@ The user confirmed the PD 28 V display, moving indicator and buttons worked
 without screen corruption. This is negotiation/idle validation with the heater
 OFF, not an 84 W load test. See [epr-bringup.md](epr-bringup.md) for details.
 
+The subsequent UI build enlarged the footer from 4×6 to 5×8 while preserving
+the header glyphs. Flash verification and the existing build/test/audit suite
+passed. After a core reset, RTT reported fresh 20 V and 28 V contracts and
+continuing heartbeats. The user confirmed the larger footer, header and LIGHT
+menu rendered correctly. One OLED FIFO error during startup recovered through
+the display-reset path; the following RTT capture through 64 seconds of uptime
+contained no further errors.
+
 For PD wire traces and meter measurements, see [the integration audit](pd-audit.md).

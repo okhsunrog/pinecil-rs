@@ -17,7 +17,7 @@ use embassy_time::{Duration, Instant, Timer};
 use embedded_graphics::{
     mono_font::{
         MonoTextStyle,
-        ascii::{FONT_4X6, FONT_6X10},
+        ascii::{FONT_5X8, FONT_6X10},
     },
     pixelcolor::BinaryColor,
     prelude::*,
@@ -84,13 +84,18 @@ fn render<D: DrawTarget<Color = BinaryColor>>(
             "+/- HOLD+:BACK"
         }
     };
-    let large = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-    Text::with_baseline(&top, Point::zero(), large, Baseline::Top).draw(display)?;
-    Text::with_baseline("OFF", Point::new(78, 0), large, Baseline::Top).draw(display)?;
+    {
+        // These uppercase 6x10 glyphs fit in the first eight pixel rows.
+        // Clip their blank font padding to give the footer a full eight rows.
+        let mut header = display.clipped(&Rectangle::new(Point::zero(), Size::new(96, 8)));
+        let large = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+        Text::with_baseline(&top, Point::zero(), large, Baseline::Top).draw(&mut header)?;
+        Text::with_baseline("OFF", Point::new(78, 0), large, Baseline::Top).draw(&mut header)?;
+    }
     Text::with_baseline(
         footer,
-        Point::new(0, 10),
-        MonoTextStyle::new(&FONT_4X6, BinaryColor::On),
+        Point::new(0, 8),
+        MonoTextStyle::new(&FONT_5X8, BinaryColor::On),
         Baseline::Top,
     )
     .draw(display)?;

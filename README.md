@@ -79,6 +79,8 @@ drive and is held low.
 
 The stock panel's full addressable resolution is 96×16. The application uses
 `DisplaySize96x16`, a 192-byte framebuffer and coordinates x=0..95, y=0..15.
+The UI reserves eight pixel rows for each line: 6×10 header glyphs with their
+blank padding clipped, and a 5×8 font for PD status and menu hints.
 Blank space between the setpoint, OFF label and PD information is part of the
 current UI layout. The glass is larger than the active pixel area; the display
 controller's larger RAM does not add physical pixels. See the
