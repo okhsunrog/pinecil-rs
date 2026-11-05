@@ -68,7 +68,14 @@ pub fn board() -> Board {
         log::set_max_level_racy(log::LevelFilter::Info);
     }
     rtt_target::rprintln!("Pinecil Rust firmware: XIP + FPU + EPR; initializing HAL");
-    let p = bl706_hal::init();
+    let p = bl706_hal::init_with_config(bl706_hal::clock::Config::pinecil_v2_144mhz())
+        .expect("Pinecil clock initialization failed");
+    log::info!(
+        "Clocks: CPU {} MHz, bus {} MHz, flash {} MHz",
+        p.clocks.cpu_hz() / 1_000_000,
+        p.clocks.bus_hz() / 1_000_000,
+        p.clocks.flash_hz() / 1_000_000
+    );
     let heater_off = p.pins.p21.into_output(false);
     // Pinecil's BL706 has embedded flash and no PSRAM. SDK System_Init routes
     // GPIO23..28 to SF/PSRAM pads; without this GPIO25/28 do not see the keys.
@@ -113,7 +120,7 @@ pub fn board() -> Board {
 pub fn banner(log: &mut Logger, name: &str) {
     let misa: usize;
     unsafe { core::arch::asm!("csrr {}, misa", out(reg) misa) };
-    let _ = writeln!(log, "Pinecil {name}: nominal RC32M, misa={misa:08x}");
+    let _ = writeln!(log, "Pinecil {name}: misa={misa:08x}");
 }
 
 #[panic_handler]

@@ -1,0 +1,10 @@
+{
+  "hardware_check": [100, 587203396, 587218976, 2906648589, 9832, 100, 97, 0],
+  "clk_cfg0": "0x7c0100ef",
+  "clk_cfg2": "0xff8f3910",
+  "hbn_glb": "0xaa0a1f63",
+  "iahb_control": "0x1f040000",
+  "iahb_command": "0x3b000000",
+  "gpio_output": "0x00000000",
+  "gpio_oe": "0x0a200200"
+}

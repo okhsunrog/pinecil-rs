@@ -34,7 +34,7 @@ panic = "abort"
 panic = "abort"
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
-bl706-hal = { version = "0.1.0", features = ["flash"], git = "https://github.com/okhsunrog/bl706-embassy", rev = "a2cc082defd0e35cdcecb342dd2df4c4e507834b" }
+bl706-hal = { version = "0.1.0", features = ["flash"], git = "https://github.com/okhsunrog/bl706-embassy", rev = "a2ea3f3bbd4d411917a20b337cb5390b3a0ccc2e" }
 critical-section = "1.2.0"
 embassy-embedded-hal = "0.6.0"
 embassy-executor = { version = "0.10.0", default-features = false }

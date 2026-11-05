@@ -63,7 +63,7 @@ def audit(path, fpu=False, probes=False):
     assert syms["__bss_end"] <= syms["__stack_bottom"]
     assert syms["__stack_top"] - syms["__stack_bottom"] == 8192
     assert syms["__stack_top"] <= 0x2202c000
-    for symbol in ("bl706_clock_to_rc32m", "bl706_clock_apply"):
+    for symbol in ("bl706_clock_to_rc32m", "bl706_clock_apply", "bl706_flash_clock_apply"):
         assert tcm_start <= syms[symbol] < tcm_start + 0x4000, (path, "clock transition outside ITCM", symbol)
     if path.name == "flash_probe":
         for symbol in ("bl706_flash_blocking_read", "bl706_flash_blocking_write", "bl706_flash_blocking_erase", "bl706_flash_async_surface"):
