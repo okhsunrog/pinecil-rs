@@ -78,6 +78,10 @@ pull-down; the physical 3.3 V rail is not measured.
 
 Tip readings use a nominal 900 uV offset and a cartridge reference curve with
 handle compensation. That offset is not calibration of this individual tip.
+After subtracting this nominal offset, a negative thermocouple voltage is
+clamped to zero; the resulting estimate equals handle temperature. Agreement
+between those two values at room temperature therefore does not validate the
+tip offset or prove that a cartridge is present.
 The amplifier uses the resistor ratio without integer gain truncation. Near-zero
 or rail-high tip inputs and out-of-range NTC inputs are rejected. An absent tip
 must never be assigned the handle temperature as a valid fallback.
@@ -101,8 +105,25 @@ omitting RISC-V's IRQ base of 16. ADC needs IRQ41; the same audit corrected PWM
 to IRQ50. The [HAL correction](https://github.com/okhsunrog/bl706-embassy/commit/a2cc082defd0e35cdcecb342dd2df4c4e507834b)
 updates generated metadata, dispatch, startup vectors and ELF checks.
 
-The corrected image is built but has not yet completed hardware validation.
-Remaining checks are async scan completion and stable samples; compare VIN with
-KM003C, check plausible room-temperature handle/tip readings, and test absent-tip
-behavior while keeping the heater disabled. A manual FIFO result does not prove
-the async driver or absolute voltage/temperature accuracy.
+The corrected image was programmed into flash with readback verification and
+started using a core reset. Independent four-entry scans of CH8, CH10 and CH9
+then completed at 4 Hz without an ADC error. The boot log reported the 5 V to
+20 V SPR transition, while measurements and the UI continued running.
+
+In a separate 20-second steady-state recording, the input estimate was
+20.009..20.052 V (mean 20.032 V) and handle temperature was 29.97..30.12 C.
+The simultaneous KM003C capture contained 19,986 samples with no gaps:
+20.084..20.095 V, mean 20.090 V. Mean voltage disagreement was about 0.3%;
+this checks one operating point and does not establish full-range accuracy.
+The ADC's error counter remained zero. Tip estimates equalled handle
+temperature because the raw thermocouple reading was below the nominal offset;
+this does not establish correct per-cartridge calibration or presence detection.
+
+Several recoverable OLED FIFO errors occurred earlier in the session, without
+an ADC fault; the steady-state recording contained none. This run does not
+establish that the earlier intermittent I2C issue has been eliminated.
+
+Remaining hardware checks include cartridge-present/absent behavior, an
+independent temperature reference, cold boot of this image, cancellation/fault
+injection and UI stress with simultaneous ADC and 28 V EPR traffic. Heating
+remains disabled throughout.

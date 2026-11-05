@@ -81,9 +81,13 @@ independent/late subscribers, and ignored events that should not redraw. It
 also builds normal and diagnostic firmware, runs Clippy, and audits XIP/FPU
 and unsupported atomic instructions.
 
-The application/display separation and read-only controller have been flashed,
-but async acquisition still needs a successful hardware test after correcting
-ADC interrupt routing. See the [acquisition contract](measurements.md).
+The application/display separation and read-only controller have been flashed
+with readback verification. Correcting the HAL's ADC interrupt to CLIC41 allowed
+the 4 Hz async scans to complete without an ADC error. At 20 V SPR, a simultaneous
+20-second KM003C capture agreed with measured VIN within about 0.3% on average.
+See the [acquisition contract and limits](measurements.md).
 The earlier hardware results in [PD scheduling](pd-scheduling.md) apply to the
-previous image. The next hardware check should include 5 V flashing, cold boot,
-button/menu/brightness stress and simultaneous PD/ADC capture at 28 V EPR.
+previous image. Cold boot, button/menu/brightness stress and simultaneous
+PD/ADC capture at 28 V EPR remain separate checks for the new image. Recoverable
+OLED FIFO errors were observed during this session; ADC completion does not
+establish their absence.
