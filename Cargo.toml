@@ -13,6 +13,8 @@ pd-diagnostics = []
 pd-manual-start = ["pd-diagnostics"]
 
 [dependencies]
+embassy-futures = { version = "0.1.2", default-features = false }
+embassy-sync = { version = "0.8.0", default-features = false }
 heapless = "0.9.3"
 uom = { version = "0.39.0", package = "uom-ng", default-features = false, features = ["si", "u32"] }
 usbpd = { version = "3.1.0", default-features = false, git = "https://github.com/elagil/usbpd", rev = "b1f0bb9720e362039ac5e5a511199c828da26c04", features = ["epr", "log"] }
@@ -36,8 +38,6 @@ bl706-hal = { version = "0.1.0", features = ["flash"], git = "https://github.com
 critical-section = "1.2.0"
 embassy-embedded-hal = "0.6.0"
 embassy-executor = { version = "0.10.0", default-features = false }
-embassy-futures = "0.1.2"
-embassy-sync = "0.8.0"
 embassy-time = "0.5.1"
 embedded-graphics = "0.8.2"
 embedded-hal-async = "1.0.0"

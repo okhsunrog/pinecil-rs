@@ -1,6 +1,6 @@
 use crate::SharedI2c;
 use bl706_hal::gpio::Input;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, watch::Watch};
 use embassy_time::Timer;
 use pinecil_rs::power::{Choice, EPR_OPERATIONAL_WATTS, PowerStatus, choose};
 use uom::si::{electric_current::milliampere, electric_potential::millivolt, power::watt};
@@ -16,7 +16,10 @@ use usbpd::{
     },
 };
 
-pub static STATUS: Signal<CriticalSectionRawMutex, PowerStatus> = Signal::new();
+// Retain the latest contract for independent application/control observers,
+// including subscribers that start after negotiation has completed.
+pub static STATUS: Watch<CriticalSectionRawMutex, PowerStatus, 3> =
+    Watch::new_with(PowerStatus::Waiting);
 
 // A diagnostic build can start the PHY after RTT has attached, without a
 // source power cycle or a timing-sensitive debugger attach during negotiation.
@@ -84,7 +87,7 @@ impl DevicePolicyManager for Policy {
         }
         let Some(choice) = choose(caps) else {
             log::error!("PD invalid source capabilities; no request sent");
-            STATUS.signal(PowerStatus::Error);
+            STATUS.sender().send(PowerStatus::Error);
             return core::future::pending().await;
         };
         log::debug!("PD requesting {} mV {} mA", choice.mv, choice.ma);
@@ -97,14 +100,16 @@ impl DevicePolicyManager for Policy {
         if let Some(c) = self.pending.take() {
             // usbpd calls this only after Accept followed by PS_RDY.
             log::info!("PD contract ready: {} mV {} mA (PS_RDY)", c.mv, c.ma);
-            STATUS.signal(PowerStatus::Contract { mv: c.mv, ma: c.ma });
+            STATUS
+                .sender()
+                .send(PowerStatus::Contract { mv: c.mv, ma: c.ma });
         }
     }
 
     async fn hard_reset(&mut self) {
         self.pending = None;
         self.epr_attempted = false;
-        STATUS.signal(PowerStatus::Waiting);
+        STATUS.sender().send(PowerStatus::Waiting);
         log::info!("PD hard reset: waiting for default power");
     }
 
@@ -139,7 +144,7 @@ pub async fn run(i2c: SharedI2c, irq: Input<16>) {
 }
 
 async fn run_inner(i2c: SharedI2c, irq: Input<16>) {
-    STATUS.signal(PowerStatus::Waiting);
+    STATUS.sender().send(PowerStatus::Waiting);
     #[cfg(feature = "pd-manual-start")]
     {
         log::info!("PD diagnostic: waiting for debugger to write PD_START=1");
@@ -176,7 +181,7 @@ async fn run_inner(i2c: SharedI2c, irq: Input<16>) {
         Ok(driver) => driver,
         Err(e) => {
             log::error!("PD init failed: {:?}", e);
-            STATUS.signal(PowerStatus::Error);
+            STATUS.sender().send(PowerStatus::Error);
             return;
         }
     };
@@ -194,5 +199,5 @@ async fn run_inner(i2c: SharedI2c, irq: Input<16>) {
         Err(usbpd::sink::policy_engine::Error::Protocol(_)) => log::error!("PD protocol error"),
         Err(_) => log::error!("PD source unresponsive"),
     }
-    STATUS.signal(PowerStatus::Error);
+    STATUS.sender().send(PowerStatus::Error);
 }

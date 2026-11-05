@@ -1,9 +1,10 @@
 use bl706_hal::gpio::Input;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_time::{Duration, Instant, with_timeout};
+use pinecil_rs::app::ButtonEvents;
 use pinecil_rs::ui::{Button, ButtonEvent};
 
-pub static EVENTS: Channel<CriticalSectionRawMutex, ButtonEvent, 8> = Channel::new();
+pub static EVENTS: ButtonEvents<CriticalSectionRawMutex> = ButtonEvents::new();
 const DEBOUNCE: Duration = Duration::from_millis(25);
 const HOLD: Duration = Duration::from_millis(700);
 

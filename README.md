@@ -28,6 +28,11 @@ seen with the earlier shared thread executor. Hardware measurements and the
 remaining recoverable OLED FIFO fault are documented in the
 [timing investigation](docs/pd-scheduling.md).
 
+Application state and input handling run independently of OLED drawing and
+recovery. PD and application snapshots use multi-reader watches; a busy display
+receives the latest state without blocking input processing. See the
+[task ownership and state flow](docs/architecture.md).
+
 ## Development hardware
 
 The maintainer uses a **Raspberry Pi Pico (RP2040) as the JTAG debug probe**.
