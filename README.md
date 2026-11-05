@@ -17,8 +17,9 @@ Embassy debounce/hold timers.
 
 This is an initial firmware project: GPIO21 stays low throughout operation.
 There is no heater control or temperature measurement. USB-PD requests fixed
-20 V if offered, otherwise 5 V, with a 3 A ceiling. EPR support is compiled in;
-requesting EPR entry/28 V is still a separate pending policy step.
+20 V if offered, otherwise 5 V, with a 3 A ceiling. For an EPR-capable source,
+it then enters EPR mode and requests a fixed 28 V profile, also limited to 3 A.
+Profiles above 28 V and PPS/AVS are never selected.
 
 ## Controls
 
@@ -43,8 +44,8 @@ preserves all 32 floating-point registers plus fcsr across interrupts.
 
 ## Local dependencies
 
-`bl706-hal` is pinned to Git commit `86d402c` in `okhsunrog/bl706-embassy`;
-its runtime provides the flash bootstrap and interrupt handling. This project
+Keep `../bl706-embassy` beside this repository. Its local `bl706-hal` provides
+the flash bootstrap, interrupt handling and the I2C cancellation fix. This project
 owns the XIP linker script, board setup, UI/PD policy, Cargo runner and boot
 header. The header disables cache burst wrap for the validated SPI read mode.
 
@@ -85,6 +86,8 @@ bash tools/check.sh
 Build and ELF checks do not establish physical operation. Hardware results are
 recorded in `docs/validation.md` as the application is brought up.
 The board/PD source comparison and known limitations are in `docs/pd-audit.md`.
+EPR traces, timing changes and the I2C cancellation regression are recorded in
+[`docs/epr-bringup.md`](docs/epr-bringup.md).
 
 `cargo run -r --example hardware-check` flashes a standalone XIP/FPU test that
 checks mapped code, a 32 KiB flash constant, initialized data, f32 arithmetic,

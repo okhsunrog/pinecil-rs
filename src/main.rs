@@ -4,6 +4,8 @@
 mod board;
 mod buttons;
 mod pd;
+#[cfg(feature = "pd-manual-start")]
+mod pd_trace;
 
 use bl706_hal::{gpio, i2c::I2c};
 use board::{Logger, banner, board};
@@ -104,7 +106,7 @@ fn render<D: DrawTarget<Color = BinaryColor>>(
 async fn display(i2c: SharedI2c, reset: gpio::Pin<3>) {
     let mut reset = reset.into_output(false);
     let mut oled = Ssd1306Async::new(
-        I2CDisplayInterface::new(i2c),
+        I2CDisplayInterface::new(DisplayI2c(i2c)),
         DisplaySize96x16,
         DisplayRotation::Rotate0,
     )
@@ -182,6 +184,24 @@ async fn display(i2c: SharedI2c, reset: gpio::Pin<3>) {
                 next_refresh = Instant::now() + Duration::from_secs(1);
             }
         }
+    }
+}
+
+struct DisplayI2c(SharedI2c);
+impl embedded_hal_async::i2c::ErrorType for DisplayI2c {
+    type Error = <SharedI2c as embedded_hal_async::i2c::ErrorType>::Error;
+}
+impl embedded_hal_async::i2c::I2c for DisplayI2c {
+    async fn transaction(
+        &mut self,
+        address: u8,
+        operations: &mut [embedded_hal_async::i2c::Operation<'_>],
+    ) -> Result<(), Self::Error> {
+        let result = self.0.transaction(address, operations).await;
+        if let Err(error) = &result {
+            log::warn!("OLED I2C: {:?}", error);
+        }
+        result
     }
 }
 

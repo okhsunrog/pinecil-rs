@@ -112,6 +112,7 @@ attached to the running image successfully. Automatic reconnect after that
 reset is not yet implemented; a fully uninterrupted flash-and-RTT workflow
 over arbitrary PD source resets is not claimed.
 
-The EPR library feature remains enabled. This application's present DPM selects
-fixed 20 V if offered, otherwise 5 V, with a 3 A ceiling. It does not yet request
-EPR entry or 28 V. Compiling EPR support does not establish an EPR contract.
+The preceding results describe the 2026-11-04 SPR policy. The EPR library feature
+remains enabled. On 2026-11-05 the DPM was extended to enter EPR and request
+fixed 28 V, retaining the 3 A ceiling and SPR fallback. Hardware results and the
+additional timing/cancellation fixes are recorded in [epr-bringup.md](epr-bringup.md).

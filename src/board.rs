@@ -10,7 +10,12 @@ impl log::Log for RttLog {
     }
     fn log(&self, record: &log::Record<'_>) {
         if self.enabled(record.metadata()) {
-            rtt_target::rprintln!("{} {}", record.level(), record.args());
+            rtt_target::rprintln!(
+                "{} us={} {}",
+                record.level(),
+                embassy_time::Instant::now().as_micros(),
+                record.args()
+            );
         }
     }
     fn flush(&self) {}
@@ -34,7 +39,10 @@ pub struct Board {
 }
 
 pub fn board() -> Board {
+    #[cfg(not(feature = "pd-manual-start"))]
     rtt_target::rtt_init_print!(rtt_target::ChannelMode::NoBlockSkip, 4096);
+    #[cfg(feature = "pd-manual-start")]
+    rtt_target::rtt_init_print!(rtt_target::ChannelMode::NoBlockSkip, 16384);
     // Single core, before enabling interrupts or spawning any tasks.
     unsafe {
         log::set_logger_racy(&RTT_LOG).unwrap();

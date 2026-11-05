@@ -2,8 +2,8 @@ use crate::SharedI2c;
 use bl706_hal::gpio::Input;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::Timer;
-use pinecil_rs::power::{Choice, PowerStatus, choose};
-use uom::si::{electric_current::milliampere, electric_potential::millivolt};
+use pinecil_rs::power::{Choice, EPR_OPERATIONAL_WATTS, PowerStatus, choose};
+use uom::si::{electric_current::milliampere, electric_potential::millivolt, power::watt};
 use usbpd::{
     protocol_layer::message::data::{
         request::PowerSource,
@@ -11,12 +11,19 @@ use usbpd::{
         source_capabilities::{PowerDataObject, SourceCapabilities},
     },
     sink::{
-        device_policy_manager::{DevicePolicyManager, DrpDevicePolicyManager, SinkDpm},
+        device_policy_manager::{DevicePolicyManager, DrpDevicePolicyManager, Event, SinkDpm},
         policy_engine::Sink,
     },
 };
 
 pub static STATUS: Signal<CriticalSectionRawMutex, PowerStatus> = Signal::new();
+
+// A diagnostic build can start the PHY after RTT has attached, without a
+// source power cycle or a timing-sensitive debugger attach during negotiation.
+#[cfg(feature = "pd-manual-start")]
+#[unsafe(no_mangle)]
+pub static PD_START: bl706_hal::portable_atomic::AtomicU32 =
+    bl706_hal::portable_atomic::AtomicU32::new(0);
 
 struct PdTimer;
 impl usbpd::timers::Timer for PdTimer {
@@ -27,16 +34,47 @@ impl usbpd::timers::Timer for PdTimer {
 
 struct Policy {
     pending: Option<Choice>,
+    epr_attempted: bool,
 }
 
 impl SinkDpm for Policy {}
 impl DrpDevicePolicyManager for Policy {}
-impl usbpd::sink::device_policy_manager::EprDevicePolicyManager for Policy {}
+impl usbpd::sink::device_policy_manager::EprDevicePolicyManager for Policy {
+    async fn epr_mode_entry_failed(
+        &mut self,
+        reason: usbpd::protocol_layer::message::data::epr_mode::DataEnterFailed,
+    ) {
+        // Keep the one-attempt guard set through the PE's Soft Reset recovery.
+        self.epr_attempted = true;
+        log::warn!("PD EPR entry failed: {:?}; retaining SPR fallback", reason);
+    }
+}
 impl DevicePolicyManager for Policy {
+    async fn get_event(&mut self, caps: &SourceCapabilities) -> Event {
+        if !self.epr_attempted && !caps.is_epr_capabilities() && caps.epr_mode_capable() {
+            self.epr_attempted = true;
+            log::debug!(
+                "PD entering EPR: operational PDP {} W",
+                EPR_OPERATIONAL_WATTS
+            );
+            return Event::EnterEprMode(usbpd::units::Power::new::<watt>(EPR_OPERATIONAL_WATTS));
+        }
+        core::future::pending().await
+    }
+
     async fn request(&mut self, caps: &SourceCapabilities) -> PowerSource {
+        log::debug!(
+            "PD {} capabilities: {} PDOs",
+            if caps.is_epr_capabilities() {
+                "EPR"
+            } else {
+                "SPR"
+            },
+            caps.pdos().len()
+        );
         for (i, pdo) in caps.pdos().iter().enumerate() {
             if let PowerDataObject::FixedSupply(f) = pdo {
-                log::info!(
+                log::debug!(
                     "PD source PDO{}: {} mV {} mA",
                     i + 1,
                     f.voltage().get::<millivolt>(),
@@ -49,8 +87,7 @@ impl DevicePolicyManager for Policy {
             STATUS.signal(PowerStatus::Error);
             return core::future::pending().await;
         };
-        log::info!("PD requesting {} mV {} mA", choice.mv, choice.ma);
-        STATUS.signal(PowerStatus::Requesting { mv: choice.mv });
+        log::debug!("PD requesting {} mV {} mA", choice.mv, choice.ma);
         let request = choice.request;
         self.pending = Some(choice);
         request
@@ -66,6 +103,7 @@ impl DevicePolicyManager for Policy {
 
     async fn hard_reset(&mut self) {
         self.pending = None;
+        self.epr_attempted = false;
         STATUS.signal(PowerStatus::Waiting);
         log::info!("PD hard reset: waiting for default power");
     }
@@ -85,7 +123,29 @@ impl DevicePolicyManager for Policy {
 #[embassy_executor::task]
 pub async fn run(i2c: SharedI2c, irq: Input<16>) {
     STATUS.signal(PowerStatus::Waiting);
+    #[cfg(feature = "pd-manual-start")]
+    {
+        log::info!("PD diagnostic: waiting for debugger to write PD_START=1");
+        while PD_START.load(bl706_hal::portable_atomic::Ordering::Relaxed) == 0 {
+            Timer::after_millis(10).await;
+        }
+    }
     log::info!("PD initializing FUSB302B at 0x22, INT_N GPIO16");
+    #[cfg(feature = "pd-manual-start")]
+    let i2c = {
+        let mut i2c = i2c;
+        if PD_START.load(bl706_hal::portable_atomic::Ordering::Relaxed) == 2 {
+            crate::pd_trace::cancellation_test(&mut i2c).await;
+            PD_START.store(0, bl706_hal::portable_atomic::Ordering::Relaxed);
+            log::info!("PD diagnostic: cancellation test done; waiting for PD_START=1");
+            while PD_START.load(bl706_hal::portable_atomic::Ordering::Relaxed) == 0 {
+                Timer::after_millis(10).await;
+            }
+        }
+        i2c
+    };
+    #[cfg(feature = "pd-manual-start")]
+    let i2c = crate::pd_trace::TracedI2c(i2c);
     // Pinecil V2 leaves the FUSB302 VBUS sense pin disconnected (IronOS:
     // NEEDS_VBUS_PROBE=0). The powered board must not wait on STATUS0.VBUSOK.
     // External detector `()` follows that board policy; it is not a voltage ADC.
@@ -103,8 +163,14 @@ pub async fn run(i2c: SharedI2c, irq: Input<16>) {
             return;
         }
     };
-    log::info!("PD controller ready; starting SPR sink, fixed 20 V preferred");
-    let mut sink = Sink::<_, PdTimer, _>::new(driver, Policy { pending: None });
+    log::info!("PD controller ready; SPR 20 V then EPR 28 V preferred");
+    let mut sink = Sink::<_, PdTimer, _>::new(
+        driver,
+        Policy {
+            pending: None,
+            epr_attempted: false,
+        },
+    );
     let result = sink.run().await;
     match result {
         Ok(_) => log::error!("PD engine stopped"),

@@ -146,7 +146,6 @@ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 [[package]]
 name = "bl706-hal"
 version = "0.1.0"
-source = "git+https://github.com/okhsunrog/bl706-embassy?rev=86d402c719fd5814ae549b549e25dc555b659f47#86d402c719fd5814ae549b549e25dc555b659f47"
 dependencies = [
  "bl706-pac",
  "critical-section",
@@ -165,7 +164,6 @@ dependencies = [
 [[package]]
 name = "bl706-pac"
 version = "0.1.0"
-source = "git+https://github.com/okhsunrog/bl706-embassy?rev=86d402c719fd5814ae549b549e25dc555b659f47#86d402c719fd5814ae549b549e25dc555b659f47"
 
 [[package]]
 name = "bumpalo"
@@ -1043,6 +1041,7 @@ dependencies = [
  "embassy-sync",
  "embassy-time",
  "embedded-graphics",
+ "embedded-hal-async",
  "fusb302b",
  "heapless",
  "log",
@@ -1482,6 +1481,7 @@ dependencies = [
  "byteorder",
  "embassy-futures",
  "heapless",
+ "log",
  "proc-bitfield",
  "thiserror",
  "uom-ng",

@@ -36,6 +36,14 @@ heartbeat tasks. Earlier hardware acceptance confirmed readable OLED output,
 working async keys/menu and brightness at nominal I2C 300 kHz. A later cold
 connection of the final XIP+PD build to the charger booted the UI, negotiated
 20 V / 3 A and produced fresh RTT heartbeat. The user confirmed the display
-and buttons still worked. EPR/28 V operation remains untested.
+and buttons still worked. This describes the earlier SPR-only policy.
+
+On 2026-11-05, the normal XIP/IMFC application automatically negotiated 20 V,
+entered EPR and requested PDO8 at 28 V / 3 A. KM003C captured the request, Accept,
+PS_RDY and subsequent KeepAlive exchanges. A settled 180-second window contains
+180,000 consecutive ADC samples with no sequence gaps: 27.892181-27.910736 V.
+The user confirmed the PD 28 V display, moving indicator and buttons worked
+without screen corruption. This is negotiation/idle validation with the heater
+OFF, not an 84 W load test. See [epr-bringup.md](epr-bringup.md) for details.
 
 For PD wire traces and meter measurements, see [the integration audit](pd-audit.md).
