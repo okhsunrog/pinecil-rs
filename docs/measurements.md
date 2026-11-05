@@ -123,7 +123,14 @@ Several recoverable OLED FIFO errors occurred earlier in the session, without
 an ADC fault; the steady-state recording contained none. This run does not
 establish that the earlier intermittent I2C issue has been eliminated.
 
-Remaining hardware checks include cartridge-present/absent behavior, an
-independent temperature reference, cold boot of this image, cancellation/fault
-injection and UI stress with simultaneous ADC and 28 V EPR traffic. Heating
-remains disabled throughout.
+The user confirmed that the measurements page was readable with a cold cartridge
+inserted. Removing it raised CH9 to near full scale (about 16,350 corrected
+14-bit counts), producing `Fault(Saturated)` / `TIP SAT` while VIN and handle
+temperature continued updating. Reinserting the cartridge restored a numeric
+tip estimate without a firmware restart. The ADC error counter stayed zero:
+the application rejected the near-rail value, rather than a scan failing.
+This verifies this open-input case, not every possible cartridge fault.
+
+Remaining hardware checks include an independent temperature reference, cold
+boot of this image, cancellation/fault injection and UI stress with simultaneous
+ADC and 28 V EPR traffic. Heating remains disabled throughout.
