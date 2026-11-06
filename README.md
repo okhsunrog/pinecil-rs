@@ -147,17 +147,19 @@ Building and running the offline checks does not require a probe or Pinecil.
 
 Flashing requires the [patched probe-rs fork](https://github.com/okhsunrog/probe-rs/tree/fix/jtagprobe-bl706)
 with BL706 target detection and SPI flash programming support. The tested
-[revision](https://github.com/okhsunrog/probe-rs/commit/4884829b503b29a3519c1e424402a6c4ec437d95)
+[revision](https://github.com/okhsunrog/probe-rs/commit/0133f9bbe84964e29f21e33a1864c2ff30cf4b15)
 can be installed with:
 
 ```sh
 cargo install --locked --force --bin probe-rs \
   --git https://github.com/okhsunrog/probe-rs \
-  --rev 4884829b503b29a3519c1e424402a6c4ec437d95 probe-rs-tools
+  --rev 0133f9bbe84964e29f21e33a1864c2ff30cf4b15 probe-rs-tools
 probe-rs list
 ```
 
 This is a separate host tool; the Nix shell does not install it automatically.
+This revision also restores the embedded-flash MISO input gate if firmware
+disabled it, allowing recovery through JTAG without manually entering ROM.
 On Linux, set up USB permissions using the
 [probe-rs udev instructions](https://probe.rs/docs/getting-started/probe-setup/#linux-udev-rules).
 
