@@ -439,3 +439,13 @@ MX25L8006 device, not arbitrary BL706 boards.
 RTT commands also accept `settings temp 175`, `settings bright 3`,
 `settings rotate auto` (or `right`/`left`), and `settings defaults`. These use
 the application's command queue and never enable heating.
+
+Hardware validation on Pinecil V2 covered 1800 consecutive saves with six
+physical sector erases, a running 500 ms watchdog and concurrent UI/ADC/PD.
+The cached run took 3.60 s; the largest observed program/erase calls were
+1.335 ms / 52.934 ms. KM003C captured 890 measurements over 20 s at
+14.979–14.987 V with no PD Reset. Three BLE connect/read/write/notify cycles
+also passed; an edit made while connected stayed pending and was saved after
+disconnection. EPR deferral and saving after a confirmed exit to SPR were
+checked separately. Heating remained OFF. Power-cut recovery during record
+writes and page migration is covered by the host fault-injection tests.
