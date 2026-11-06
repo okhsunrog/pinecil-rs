@@ -1,0 +1,6 @@
+# Physical SPI NOR offsets; the ROM maps image_offset to XIP 0x23000000.
+capacity = 0x100000
+image_offset = 0x1000
+settings_start = 0xF8000
+settings_end = 0xFC000
+# Preserve the final 16 KiB, including stock firmware settings/factory data.

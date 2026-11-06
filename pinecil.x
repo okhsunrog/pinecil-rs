@@ -17,7 +17,7 @@ SECTIONS {
        their load image after all XIP code/constants, using forward references. */
     .init : AT(ALIGN(LOADADDR(.rodata) + SIZEOF(.rodata), 64)) ALIGN(64) {
         __tcm_start = .;
-        KEEP(*(.init)) KEEP(*(.text.clock_switch)) KEEP(*(.text.trap))
+        KEEP(*(.init)) KEEP(*(.text.clock_switch)) KEEP(*(.text.flash_transaction)) KEEP(*(.text.trap))
         . = ALIGN(4);
     } > ITCM
     .vectors : AT(LOADADDR(.init) + ADDR(.vectors) - ADDR(.init)) ALIGN(64) {

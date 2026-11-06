@@ -3,6 +3,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 uv run --no-project tools/check_sources.py
 cargo fmt --all --check
+cargo clippy --release --locked --features storage-diagnostics --bin pinecil-rs -- -D warnings
+cargo build --release --locked --features storage-diagnostics
+uv run --no-project tools/audit_elf.py
 cargo clippy --release --locked --features pd-diagnostics --bin pinecil-rs -- -D warnings
 cargo build --release --locked --features pd-manual-start
 uv run --no-project tools/audit_elf.py

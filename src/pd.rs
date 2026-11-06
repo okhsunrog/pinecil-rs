@@ -100,8 +100,7 @@ impl DevicePolicyManager for Policy {
             return Event::EnterEprMode(usbpd::units::Power::new::<watt>(EPR_OPERATIONAL_WATTS));
         }
         loop {
-            if spr_requested()
-                && !caps.is_epr_capabilities()
+            if !caps.is_epr_capabilities()
                 && self.pending.is_none()
                 && self.active_spr
                 && !SPR_READY.swap(true, bl706_hal::portable_atomic::Ordering::Relaxed)

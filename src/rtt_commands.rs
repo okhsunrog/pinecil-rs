@@ -6,7 +6,67 @@ fn execute(line: &[u8]) {
         log::warn!("RTT command must be UTF-8");
         return;
     };
-    match command.trim() {
+    let command = command.trim();
+    if command == "settings status" {
+        if let Some(status) = crate::storage::STATUS.try_get() {
+            log::info!("Settings {:?}; saved={:?}", status.phase, status.saved);
+            log::info!("Flash {:?}", status.metrics);
+        }
+        log::info!(
+            "Settings active={:?}",
+            crate::APP_STATE.try_get().map(|s| s.ui.settings)
+        );
+        return;
+    }
+    #[cfg(feature = "storage-diagnostics")]
+    if command == "settings stress" {
+        crate::storage::STRESS.store(true, bl706_hal::portable_atomic::Ordering::Release);
+        log::info!("Settings GC stress queued; requires heater OFF and SPR");
+        return;
+    }
+    if let Some(argument) = command.strip_prefix("settings ") {
+        use pinecil_rs::settings::{Command, RotationMode};
+        let update = match argument {
+            "defaults" => Some(Command::Defaults),
+            "rotate auto" => Some(Command::Rotation(RotationMode::Auto)),
+            "rotate left" => Some(Command::Rotation(RotationMode::Left)),
+            "rotate right" => Some(Command::Rotation(RotationMode::Right)),
+            _ => argument
+                .strip_prefix("temp ")
+                .and_then(|s| s.parse().ok())
+                .map(Command::Temperature)
+                .or_else(|| {
+                    argument
+                        .strip_prefix("bright ")
+                        .and_then(|s| s.parse().ok())
+                        .map(Command::Brightness)
+                }),
+        };
+        if let Some(update) = update {
+            let valid = match update {
+                Command::Temperature(t) => (pinecil_rs::settings::MIN_SETPOINT_C
+                    ..=pinecil_rs::heater::MAX_TARGET_C)
+                    .contains(&t),
+                Command::Brightness(b) => (1..=4).contains(&b),
+                _ => true,
+            };
+            if valid {
+                log::info!(
+                    "Settings command {:?}: {:?}",
+                    update,
+                    crate::storage::COMMANDS.try_send(update)
+                );
+            } else {
+                log::warn!("Invalid settings value");
+            }
+        } else {
+            log::warn!(
+                "Settings: status | temp 150..350 | bright 1..4 | rotate auto/right/left | defaults"
+            );
+        }
+        return;
+    }
+    match command {
         "pd spr" => {
             let ui_off = crate::APP_STATE
                 .try_get()
@@ -37,7 +97,7 @@ fn execute(line: &[u8]) {
             }
         }
         "" => {}
-        _ => log::warn!("RTT commands: pd spr | pd status | motion status"),
+        _ => log::warn!("RTT commands: pd spr | pd status | motion status | settings status"),
     }
 }
 

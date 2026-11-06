@@ -10,7 +10,55 @@ fn main() {
     };
     println!("cargo:rerun-if-changed=pinecil-ble.x");
     println!("cargo:rerun-if-env-changed=BLE_CODE_PLACEMENT");
+    println!("cargo:rerun-if-changed=flash-layout.toml");
+    let layout = fs::read_to_string("flash-layout.toml").unwrap();
+    let value = |key: &str| -> u32 {
+        let line = layout
+            .lines()
+            .find(|l| l.starts_with(&format!("{key} =")))
+            .expect("missing flash layout key");
+        u32::from_str_radix(
+            line.split('=')
+                .nth(1)
+                .unwrap()
+                .trim()
+                .trim_start_matches("0x"),
+            16,
+        )
+        .unwrap()
+    };
+    let (capacity, offset, start, end) = (
+        value("capacity"),
+        value("image_offset"),
+        value("settings_start"),
+        value("settings_end"),
+    );
+    assert!(offset < start && start < end && end <= capacity);
+    assert!(start % 4096 == 0 && end % 4096 == 0 && end - start >= 8192);
+    fs::write(
+        out.join("flash_layout.rs"),
+        format!("pub const SETTINGS_START:u32={start};\npub const SETTINGS_END:u32={end};\n"),
+    )
+    .unwrap();
     let mut script = fs::read_to_string(source).unwrap();
+    assert_eq!(
+        script.matches("LENGTH = 1M - 4K").count(),
+        1,
+        "XIP memory template changed"
+    );
+    assert_eq!(
+        script.matches("<= 0x23100000, \"flash overflow\"").count(),
+        1,
+        "flash load limit template changed"
+    );
+    script = script.replace("LENGTH = 1M - 4K", &format!("LENGTH = {}", start - offset));
+    script = script.replace(
+        "<= 0x23100000, \"flash overflow\"",
+        &format!(
+            "<= {:#x}, \"flash overlaps settings\"",
+            0x23000000u32 + start
+        ),
+    );
     if env::var_os("CARGO_FEATURE_BLE_DIAGNOSTICS").is_some() {
         println!("cargo:rustc-link-arg=--undefined=ble_trace_timer_store");
         // Keep data/BSS/stack at identical addresses in both placement variants.

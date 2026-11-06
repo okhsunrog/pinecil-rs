@@ -14,6 +14,7 @@ mod pd;
 #[cfg(feature = "pd-diagnostics")]
 mod pd_trace;
 mod rtt_commands;
+mod storage;
 
 use bl706_hal::i2c::I2c;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
@@ -28,13 +29,15 @@ static APP_STATE: StateWatch<CriticalSectionRawMutex> = StateWatch::new();
 pub type SharedI2c = I2cDevice<'static, CriticalSectionRawMutex, I2c>;
 
 #[embassy_executor::task]
-async fn application() {
+async fn application(initial: pinecil_rs::settings::Settings) {
     app::run(
         &buttons::EVENTS,
         pd::STATUS.receiver().unwrap(),
         control::MEASUREMENTS.receiver().unwrap(),
         accelerometer::MOTION.receiver().unwrap(),
         &APP_STATE,
+        &storage::COMMANDS,
+        initial,
     )
     .await;
 }
@@ -48,7 +51,7 @@ async fn ble_controller(mut runner: bl706_ble::Runner) {
 #[cfg(feature = "ble")]
 #[embassy_executor::task]
 async fn ble_host(transport: bl706_ble::NativeTransport) {
-    pinecil_rs::ble::run(transport, |_| {}).await;
+    pinecil_rs::ble::run_with_flash_gate(transport, |_| {}, Some(&storage::BLE_GATE)).await;
 }
 
 #[unsafe(no_mangle)]
@@ -84,7 +87,8 @@ extern "C" fn __bl706_main() -> ! {
             .unwrap(),
         );
         s.spawn(buttons::run(b.key_plus, b.key_minus).unwrap());
-        s.spawn(application().unwrap());
+        s.spawn(application(b.initial_settings).unwrap());
+        s.spawn(storage::run(b.settings_store, APP_STATE.receiver().unwrap()).unwrap());
         s.spawn(accelerometer::run(I2cDevice::new(bus)).unwrap());
         s.spawn(
             display::run(

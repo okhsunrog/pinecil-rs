@@ -11,4 +11,6 @@ pub mod heater;
 pub mod motion;
 pub mod power;
 pub mod sensors;
+pub mod settings;
+pub mod settings_store;
 pub mod ui;

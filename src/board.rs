@@ -38,6 +38,8 @@ impl core::fmt::Write for Logger {
 pub struct Board {
     #[cfg(feature = "ble")]
     pub ble: (bl706_ble::NativeTransport, bl706_ble::Runner),
+    pub settings_store: Option<pinecil_rs::settings_store::Store<bl706_hal::flash::XipFlash>>,
+    pub initial_settings: pinecil_rs::settings::Settings,
     pub software_interrupt: bl706_hal::executor::InterruptToken,
     pub log: Logger,
     pub commands: rtt_target::DownChannel,
@@ -111,6 +113,7 @@ pub fn board() -> Board {
         },
     )
     .expect("heater PWM initialization failed");
+    let (settings_store, initial_settings) = crate::storage::open(p.flash);
     #[cfg(feature = "ble")]
     let ble = {
         // RF calibration temporarily owns IRQ3 and analog hardware. Complete
@@ -165,6 +168,8 @@ pub fn board() -> Board {
     .expect("heater watchdog initialization failed");
     log::info!("Reset reason: {:?}; heater starts OFF", p.reset_reason);
     let board = Board {
+        settings_store,
+        initial_settings,
         #[cfg(feature = "ble")]
         ble,
         software_interrupt: p.software_interrupt,

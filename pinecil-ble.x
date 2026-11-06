@@ -21,7 +21,7 @@ SECTIONS {
        their load image after all XIP code/constants, using forward references. */
     .init : AT(ALIGN(LOADADDR(.rodata) + SIZEOF(.rodata), 64)) ALIGN(64) {
         __tcm_start = .;
-        KEEP(*(.init)) KEEP(*(.text.clock_switch)) KEEP(*(.text.trap))
+        KEEP(*(.init)) KEEP(*(.text.clock_switch)) KEEP(*(.text.flash_transaction)) KEEP(*(.text.trap))
         /* Radio deadlines cannot tolerate repeated single-SPI cache misses. */
         *(.text.rwble_* .text.rwip_* .text.lld_* .text.ea_*)
         *(.text.ble_co_list_* .text.ble_ke_event_* .bleromro .bleromro.*)

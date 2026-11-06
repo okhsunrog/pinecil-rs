@@ -163,8 +163,9 @@ pub async fn run(
         }
         let state = snapshots.try_get();
         let request = state.map_or(Request::OFF, |state| Request {
-            enabled: state.ui.heating_requested,
-            target_c: state.ui.setpoint_c,
+            enabled: state.ui.heating_requested
+                && !crate::storage::BUSY.load(bl706_hal::portable_atomic::Ordering::Acquire),
+            target_c: state.ui.settings.setpoint_c,
             limit_mw: heater::MAX_POWER_MW,
         });
         #[cfg(feature = "heater-diagnostics")]

@@ -6,6 +6,7 @@ printed as <unknown> by disassemblers without +a. Also checks compressed FP ops.
 from pathlib import Path
 import argparse
 import struct
+from flash_image import SETTINGS_START
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -43,7 +44,7 @@ def audit(path, fpu=False, probes=False, ble_placement="itcm"):
                 assert sh[1] == 8 and 0x2202a000 <= sh[3] < sh[3]+sh[5] <= 0x2202e000, (n, "trace outside reserved RAM")
     if "rwble_isr" in syms:
         for hot in ("rwble_isr", "rwip_schedule", "lld_evt_end"):
-            lo, hi = (0x22014000, 0x22020000) if ble_placement == "itcm" else (0x23000000, 0x230ff000)
+            lo, hi = (0x22014000, 0x22020000) if ble_placement == "itcm" else (0x23000000, (0x23000000 + SETTINGS_START - 0x1000))
             assert lo <= syms[hot] < hi, (hot, "wrong code placement", ble_placement)
         if "BLE_FLIGHT_RECORDER" in syms:
             trace = sections[".ble_trace"]
@@ -71,11 +72,11 @@ def audit(path, fpu=False, probes=False, ble_placement="itcm"):
             assert image[offset:offset+sh[5]] == data[sh[4]:sh[4]+sh[5]], (path, "copy mismatch", section_name)
         for section_name in (".text", ".rodata"):
             sh = sections[section_name]
-            assert 0x23000000 <= sh[3] < sh[3]+sh[5] <= 0x230ff000
+            assert 0x23000000 <= sh[3] < sh[3]+sh[5] <= (0x23000000 + SETTINGS_START - 0x1000)
             assert not sh[2] & 1, (path, "writable XIP section", section_name)
             offset = sh[3] - 0x23000000
             assert image[offset:offset+sh[5]] == data[sh[4]:sh[4]+sh[5]]
-        assert 0x23000000 <= syms["__bl706_main"] < 0x230ff000
+        assert 0x23000000 <= syms["__bl706_main"] < (0x23000000 + SETTINGS_START - 0x1000)
         assert tcm_start <= syms["bl706_irq_entry"] < 0x22020000
     else:
         assert entry == syms["_start"]
@@ -86,6 +87,8 @@ def audit(path, fpu=False, probes=False, ble_placement="itcm"):
     assert syms["__stack_top"] <= 0x2202c000
     for symbol in ("bl706_clock_to_rc32m", "bl706_clock_apply", "bl706_flash_clock_apply"):
         assert tcm_start <= syms[symbol] < tcm_start + 0x4000, (path, "clock transition outside ITCM", symbol)
+    if "bl706_xip_flash_transaction" in syms:
+        assert tcm_start <= syms["bl706_xip_flash_transaction"] < 0x22020000
     if path.name == "flash_probe":
         for symbol in ("bl706_flash_blocking_read", "bl706_flash_blocking_write", "bl706_flash_blocking_erase", "bl706_flash_async_surface"):
             assert 0x22020000 <= syms[symbol] < 0x2202c000, (path, "compile-only flash surface missing/outside RAM", symbol)
@@ -95,12 +98,12 @@ def audit(path, fpu=False, probes=False, ble_placement="itcm"):
         if kind != 1 or not memsz:
             continue
         if flash and filesz:
-            assert 0x23000000 <= pa < pa+filesz <= 0x23100000
+            assert 0x23000000 <= pa < pa+filesz <= 0x23000000 + SETTINGS_START
             if va == 0x21000000:
                 assert filesz == memsz == 176
                 continue
-            if 0x23000000 <= va < 0x230ff000:
-                assert pa == va + 0x1000 and va + memsz <= 0x230ff000
+            if 0x23000000 <= va < (0x23000000 + SETTINGS_START - 0x1000):
+                assert pa == va + 0x1000 and va + memsz <= (0x23000000 + SETTINGS_START - 0x1000)
                 continue
         else:
             assert va == pa

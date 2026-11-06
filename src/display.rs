@@ -63,7 +63,7 @@ async fn render<D: DrawTarget<Color = BinaryColor>>(
                         write!(top, "{}/{}C", tip / 100, measurements.heater.target_c).unwrap();
                     }
                 }
-                HeaterState::Off => write!(top, "SET {}C", ui.setpoint_c).unwrap(),
+                HeaterState::Off => write!(top, "SET {}C", ui.settings.setpoint_c).unwrap(),
             }
             power_text.as_str()
         }
@@ -72,7 +72,7 @@ async fn render<D: DrawTarget<Color = BinaryColor>>(
             "+/- HOLD+:ROT"
         }
         Screen::Rotation => {
-            write!(top, "ROT {}", ui.rotation.label()).unwrap();
+            write!(top, "ROT {}", ui.settings.rotation.label()).unwrap();
             "+/- HOLD+:BACK"
         }
         Screen::Measurements => {

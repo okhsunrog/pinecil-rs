@@ -5,7 +5,7 @@ import struct
 import sys
 import unittest
 import zlib
-from flash_image import BASE, load_segments, prepare
+from flash_image import BASE, SETTINGS_START, load_segments, prepare
 
 ELF = Path(sys.argv.pop(1)).read_bytes()
 
@@ -21,6 +21,19 @@ class FlashImageTests(unittest.TestCase):
             self.assertEqual(zlib.crc32(header[start:end]), struct.unpack_from("<I", header, crc)[0])
         self.assertEqual(struct.unpack_from("<4I", header, 116), (0x300, len(image), 0, 4096))
         self.assertEqual(prepare(elf)[0], elf)
+
+    def test_rejects_payload_in_settings_partition(self):
+        elf = bytearray(ELF)
+        phoff = struct.unpack_from("<I", elf, 28)[0]
+        count = struct.unpack_from("<H", elf, 44)[0]
+        for i in reversed(range(count)):
+            pos = phoff + i * 32
+            kind, _, _, pa, size, *_ = struct.unpack_from("<8I", elf, pos)
+            if kind == 1 and size and pa > BASE:
+                struct.pack_into("<I", elf, pos + 12, BASE + SETTINGS_START)
+                break
+        with self.assertRaisesRegex(ValueError, "settings"):
+            prepare(elf)
 
     def test_rejects_truncation(self):
         for count in (0, 7, 51, len(ELF) // 8, len(ELF) - 1):

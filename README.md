@@ -272,7 +272,7 @@ Rotation defaults to AUTO. The SC7A20 is sampled asynchronously at 25 Hz in
 high-resolution ±2 g mode, sharing the 300 kHz bus with OLED and FUSB302B.
 A low-pass filter, a raw-count deadband and a 400 ms confirmation period prevent
 brief rolls from flipping the display. Flat/vertical poses retain the last
-orientation. RIGHT/LEFT override the sensor; settings currently last until reset.
+orientation. RIGHT/LEFT override the sensor; settings are persisted when a safe storage window is available (see [Persistent settings](#persistent-settings)).
 If acquisition fails, the display retains its last stable orientation and the
 task retries every two seconds without blocking the UI. Movement/idle data is
 available in application snapshots, but automatic sleep/wake is not implemented
@@ -409,3 +409,33 @@ Hardware results and diagnostic history:
 
 The default BLE image and standalone example are built, linted and audited in CI. Hardware GATT tests
 require a connected Pinecil and a Bluetooth adapter and are run separately.
+
+## Persistent settings
+
+Setpoint, display brightness and rotation are stored together using
+[`sequential-storage`](https://docs.rs/sequential-storage/8.0.2/) and a versioned
+Postcard record. A small RAM cache tracks four pages and the single settings key. Heating enable is never saved: every boot starts **OFF**.
+Changes are coalesced and saved 1.5 seconds after the last edit. Ordinary
+telemetry updates do not write flash, and returning to the saved values avoids
+a write. Unknown schemas or invalid records use defaults with writes disabled.
+
+The BL706 HAL's ROM-backed XIP flash handle performs the actual operations.
+Flash cannot be read while programming/erasing; each physical operation masks
+interrupts. Consequently saves wait until heating is OFF, a stable SPR contract
+is active (at most 20 V), and there is no BLE connection. BLE advertising is
+stopped with an HCI acknowledgement, then resumed after saving. Settings edited
+in EPR remain pending until `pd spr` completes; the firmware does not silently
+change the power policy. Pending settings are lost if power is removed before
+saving. `settings status` over RTT reports the active and saved snapshots,
+phase, physical operation counts and maximum observed duration.
+
+`flash-layout.toml` reserves physical offsets **0xF8000..0xFC000** (four 4 KiB
+sectors). Both the linker and image builder reject firmware overlapping this
+partition. The last 16 KiB remain untouched, including the stock settings area.
+Normal `cargo run --release` programming preserves the settings partition;
+a whole-chip erase does not. This layout is intended for the validated 1 MiB
+MX25L8006 device, not arbitrary BL706 boards.
+
+RTT commands also accept `settings temp 175`, `settings bright 3`,
+`settings rotate auto` (or `right`/`left`), and `settings defaults`. These use
+the application's command queue and never enable heating.

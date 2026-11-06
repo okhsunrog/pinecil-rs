@@ -7,10 +7,13 @@ from hashlib import sha256
 from pathlib import Path
 import struct
 import zlib
+import tomllib
 
 BASE = 0x23000000
-CAPACITY = 1024 * 1024
-IMAGE_OFFSET = 4096
+LAYOUT = tomllib.loads((Path(__file__).resolve().parents[1] / "flash-layout.toml").read_text())
+CAPACITY = LAYOUT["capacity"]
+IMAGE_OFFSET = LAYOUT["image_offset"]
+SETTINGS_START = LAYOUT["settings_start"]
 HEADER_SIZE = 176
 
 
@@ -57,8 +60,8 @@ def prepare(elf):
         raise ValueError("missing flash bootstrap at physical offset 0x1000")
     end = max(p + size for p, _, size, _ in payload)
     length = (end - BASE - IMAGE_OFFSET + 15) & ~15
-    if length <= 0 or IMAGE_OFFSET + length > CAPACITY:
-        raise ValueError("flash image exceeds 1 MiB")
+    if length <= 0 or IMAGE_OFFSET + length > SETTINGS_START:
+        raise ValueError("flash image overlaps reserved settings")
     image = bytearray(b"\xff" * length)
     previous = BASE + IMAGE_OFFSET
     for paddr, offset, size, _ in payload:

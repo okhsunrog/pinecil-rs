@@ -1,6 +1,6 @@
 //! Application state and event processing, independent of display and GPIO I/O.
 
-use embassy_futures::select::{Either4, select4};
+use embassy_futures::select::{Either5, select5};
 use embassy_sync::{
     blocking_mutex::raw::RawMutex,
     channel::Channel,
@@ -14,9 +14,10 @@ use crate::{
     ui::{ButtonEvent, Ui},
 };
 
+pub type SettingsCommands<M> = Channel<M, crate::settings::Command, 4>;
 pub type ButtonEvents<M> = Channel<M, ButtonEvent, 8>;
-// Display, control and telemetry may each subscribe without consuming another
-// reader's update. Display and control currently hold subscriptions.
+// Display, control and storage subscribe independently without consuming
+// another reader's update.
 pub type StateWatch<M> = Watch<M, AppState, 3>;
 pub type StateReceiver<'a, M> = Receiver<'a, M, AppState, 3>;
 
@@ -32,7 +33,10 @@ pub struct AppState {
 
 impl AppState {
     pub fn display_orientation(&self) -> Orientation {
-        self.ui.rotation.orientation(self.motion.orientation)
+        self.ui
+            .settings
+            .rotation
+            .orientation(self.motion.orientation)
     }
 }
 
@@ -45,9 +49,11 @@ pub async fn run<M: RawMutex, const N: usize, const K: usize, const L: usize>(
     mut measurements: Receiver<'_, M, Measurements, K>,
     mut motion: Receiver<'_, M, MotionState, L>,
     snapshots: &StateWatch<M>,
+    commands: &SettingsCommands<M>,
+    initial_settings: crate::settings::Settings,
 ) -> ! {
     let mut state = AppState {
-        ui: Ui::default(),
+        ui: Ui::with_settings(initial_settings),
         // Read the latest contract even if PD initialized before this task.
         power: power.get().await,
         measurements: measurements.get().await,
@@ -59,19 +65,23 @@ pub async fn run<M: RawMutex, const N: usize, const K: usize, const L: usize>(
     loop {
         let previous = state;
         // Observe ready power updates before draining queued button events.
-        match select4(
+        match select5(
             power.changed(),
             measurements.changed(),
             motion.changed(),
             buttons.receive(),
+            commands.receive(),
         )
         .await
         {
-            Either4::First(status) => state.power = status,
-            Either4::Second(frame) => state.measurements = frame,
-            Either4::Third(frame) => state.motion = frame,
-            Either4::Fourth(event) => {
+            Either5::First(status) => state.power = status,
+            Either5::Second(frame) => state.measurements = frame,
+            Either5::Third(frame) => state.motion = frame,
+            Either5::Fourth(event) => {
                 state.ui.handle(event);
+            }
+            Either5::Fifth(command) => {
+                state.ui.settings.apply(command);
             }
         }
         if state != previous {
@@ -100,8 +110,43 @@ mod tests {
     }
 
     #[test]
+    fn restored_settings_and_remote_edits_never_restore_heat_enable() {
+        let buttons = ButtonEvents::<NoopRawMutex>::new();
+        let commands = SettingsCommands::new();
+        let power = Watch::<NoopRawMutex, _, 1>::new_with(PowerStatus::Waiting);
+        let measurements = Watch::<NoopRawMutex, _, 1>::new_with(Measurements::WAITING);
+        let motion = Watch::<NoopRawMutex, _, 1>::new_with(MotionState::WAITING);
+        let snapshots = StateWatch::new();
+        let initial = crate::settings::Settings {
+            setpoint_c: 230,
+            brightness: 4,
+            rotation: crate::settings::RotationMode::Left,
+        };
+        let mut application = pin!(run(
+            &buttons,
+            power.receiver().unwrap(),
+            measurements.receiver().unwrap(),
+            motion.receiver().unwrap(),
+            &snapshots,
+            &commands,
+            initial
+        ));
+        drive(application.as_mut());
+        assert_eq!(snapshots.try_get().unwrap().ui.settings, initial);
+        assert!(!snapshots.try_get().unwrap().ui.heating_requested);
+        commands
+            .try_send(crate::settings::Command::Temperature(240))
+            .unwrap();
+        drive(application.as_mut());
+        let state = snapshots.try_get().unwrap();
+        assert_eq!(state.ui.settings.setpoint_c, 240);
+        assert!(!state.ui.heating_requested);
+    }
+
+    #[test]
     fn stalled_display_does_not_block_buttons_or_power_updates() {
         let buttons = ButtonEvents::<NoopRawMutex>::new();
+        let commands = SettingsCommands::new();
         let power = Watch::<NoopRawMutex, _, 3>::new_with(PowerStatus::Waiting);
         let measurements = Watch::<NoopRawMutex, _, 3>::new_with(Measurements::WAITING);
         let motion = Watch::<NoopRawMutex, _, 1>::new_with(MotionState::WAITING);
@@ -112,7 +157,9 @@ mod tests {
             power.receiver().unwrap(),
             measurements.receiver().unwrap(),
             motion.receiver().unwrap(),
-            &snapshots
+            &snapshots,
+            &commands,
+            crate::settings::Settings::default()
         ));
         drive(application.as_mut());
 
@@ -132,7 +179,7 @@ mod tests {
         drive(application.as_mut());
 
         let state = display.try_get().unwrap();
-        assert_eq!(state.ui.setpoint_c, crate::ui::MAX_SETPOINT_C);
+        assert_eq!(state.ui.settings.setpoint_c, crate::ui::MAX_SETPOINT_C);
         assert_eq!(state.ui.screen, Screen::Brightness);
         assert_eq!(state.ui.brightness_level(), 3);
         assert_eq!(
@@ -147,6 +194,7 @@ mod tests {
     #[test]
     fn independent_readers_and_late_subscriber_observe_latest_state() {
         let buttons = ButtonEvents::<NoopRawMutex>::new();
+        let commands = SettingsCommands::new();
         let power = Watch::<NoopRawMutex, _, 3>::new_with(PowerStatus::Contract {
             mv: 20_000,
             ma: 1_500,
@@ -161,7 +209,9 @@ mod tests {
             power.receiver().unwrap(),
             measurements.receiver().unwrap(),
             motion.receiver().unwrap(),
-            &snapshots
+            &snapshots,
+            &commands,
+            crate::settings::Settings::default()
         ));
         drive(application.as_mut());
         assert_eq!(display.try_get().unwrap().power, power.try_get().unwrap());
@@ -174,7 +224,7 @@ mod tests {
         drive(application.as_mut());
 
         let latest = display.try_changed().unwrap();
-        assert_eq!(latest.ui.setpoint_c, 155);
+        assert_eq!(latest.ui.settings.setpoint_c, 155);
         assert_eq!(latest.power, PowerStatus::Error);
         assert_eq!(telemetry.try_changed(), Some(latest));
         let mut late = snapshots.receiver().unwrap();
@@ -184,6 +234,7 @@ mod tests {
     #[test]
     fn ignored_input_does_not_request_a_redraw() {
         let buttons = ButtonEvents::<NoopRawMutex>::new();
+        let commands = SettingsCommands::new();
         let power = Watch::<NoopRawMutex, _, 1>::new_with(PowerStatus::Waiting);
         let measurements = Watch::<NoopRawMutex, _, 3>::new_with(Measurements::WAITING);
         let motion = Watch::<NoopRawMutex, _, 1>::new_with(MotionState::WAITING);
@@ -194,7 +245,9 @@ mod tests {
             power.receiver().unwrap(),
             measurements.receiver().unwrap(),
             motion.receiver().unwrap(),
-            &snapshots
+            &snapshots,
+            &commands,
+            crate::settings::Settings::default()
         ));
         drive(application.as_mut());
         display.try_get().unwrap();
@@ -215,6 +268,7 @@ mod tests {
         use crate::sensors::{Reading, SensorFault};
 
         let buttons = ButtonEvents::<NoopRawMutex>::new();
+        let commands = SettingsCommands::new();
         let contract = PowerStatus::Contract {
             mv: 28_000,
             ma: 3_000,
@@ -229,7 +283,9 @@ mod tests {
             power.receiver().unwrap(),
             measurements.receiver().unwrap(),
             motion.receiver().unwrap(),
-            &snapshots
+            &snapshots,
+            &commands,
+            crate::settings::Settings::default()
         ));
         drive(application.as_mut());
         let good = Measurements {
@@ -255,7 +311,7 @@ mod tests {
         drive(application.as_mut());
         let latest = display.try_changed().unwrap();
         assert_eq!(latest.measurements, failed);
-        assert_eq!(latest.ui.setpoint_c, 155);
+        assert_eq!(latest.ui.settings.setpoint_c, 155);
         assert_eq!(latest.power, contract);
     }
 
@@ -264,6 +320,7 @@ mod tests {
         use crate::{motion::Status, ui::RotationMode};
 
         let buttons = ButtonEvents::<NoopRawMutex>::new();
+        let commands = SettingsCommands::new();
         let power = Watch::<NoopRawMutex, _, 1>::new_with(PowerStatus::Waiting);
         let measurements = Watch::<NoopRawMutex, _, 1>::new_with(Measurements::WAITING);
         let motion = Watch::<NoopRawMutex, _, 1>::new_with(MotionState::WAITING);
@@ -274,7 +331,9 @@ mod tests {
             power.receiver().unwrap(),
             measurements.receiver().unwrap(),
             motion.receiver().unwrap(),
-            &snapshots
+            &snapshots,
+            &commands,
+            crate::settings::Settings::default()
         ));
         drive(application.as_mut());
         let sample = MotionState {
@@ -306,7 +365,7 @@ mod tests {
         });
         drive(application.as_mut());
         let state = display.try_get().unwrap();
-        assert_eq!(state.ui.rotation, RotationMode::Right);
+        assert_eq!(state.ui.settings.rotation, RotationMode::Right);
         assert_eq!(state.display_orientation(), Orientation::Right);
         assert!(!state.ui.heating_requested);
         assert_eq!(state.motion.idle_ms(1000), None);
