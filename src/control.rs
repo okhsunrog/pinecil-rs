@@ -163,8 +163,7 @@ pub async fn run(
         }
         let state = snapshots.try_get();
         let request = state.map_or(Request::OFF, |state| Request {
-            enabled: state.ui.heating_requested
-                && !crate::storage::BUSY.load(bl706_hal::portable_atomic::Ordering::Acquire),
+            enabled: state.ui.heating_requested,
             target_c: state.ui.settings.setpoint_c,
             limit_mw: heater::MAX_POWER_MW,
         });
@@ -189,6 +188,12 @@ pub async fn run(
                     core::hint::spin_loop();
                 }
             }
+            request
+        };
+        // Apply the maintenance interlock after diagnostic overrides as well.
+        let request = if crate::storage::BUSY.load(bl706_hal::portable_atomic::Ordering::Acquire) {
+            Request::OFF
+        } else {
             request
         };
         let starting = request.enabled && !was_enabled;
