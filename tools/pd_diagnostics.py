@@ -9,6 +9,8 @@ import sys
 
 p = argparse.ArgumentParser()
 p.add_argument('--start-pd', action='store_true')
+p.add_argument('--pd-command', choices=('spr', 'status'),
+               help='send pd spr/status over RTT down-channel 0; requires updated firmware')
 p.add_argument('--heater-command', type=int, choices=range(1, 7),
                help='bounded heater qualification command (heater-diagnostics build only)')
 p.add_argument('--seconds', type=float, default=15)
@@ -58,6 +60,26 @@ def read_bytes(addr, n):
     skip = addr - aligned
     data = b''.join(struct.pack('<I', w) for w in words(aligned, (skip+n+3)//4))
     return data[skip:skip+n]
+
+def send_command(text):
+    up_count, down_count = words(control + 16, 2)
+    if not 1 <= up_count <= 4 or not 1 <= down_count <= 4:
+        raise RuntimeError('Flashed firmware has no RTT command channel; install the updated image first')
+    descriptor = control + 24 + up_count * 24
+    name, buf, size, wr, rd, flags = words(descriptor, 6)
+    if size != 128 or not (0 <= wr < size and 0 <= rd < size):
+        raise RuntimeError('RTT command channel ABI mismatch; use the exact flashed ELF')
+    payload = (text + '\n').encode()
+    if len(payload) > (rd - wr - 1) % size:
+        raise RuntimeError('RTT command channel is full')
+    # Publish WrOff only after the payload, including a possible ring wrap.
+    first = min(len(payload), size - wr)
+    for address, block in ((buf + wr, payload[:first]), (buf, payload[first:])):
+        if block:
+            result = cmd(f'write_memory {address:#x} 8 {{{" ".join(str(x) for x in block)}}}')
+            if result.strip():
+                raise RuntimeError(result)
+    write(descriptor + 12, (wr + len(payload)) % size)
 
 def drain_channel(index):
     descriptor = control + 24 + index * 24
@@ -120,6 +142,8 @@ try:
     if not read_bytes(control, 16).startswith(b'SEGGER RTT'):
         raise RuntimeError('RTT signature mismatch; use the exact ELF flashed on the target')
     drain()
+    if a.pd_command is not None:
+        send_command('pd ' + a.pd_command)
     if a.heater_command is not None:
         mailbox = symbols.get('HEATER_TEST_COMMAND')
         if mailbox is None or not 0x22014000 <= mailbox < 0x22024000 - 8:

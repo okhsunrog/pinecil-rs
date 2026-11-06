@@ -40,6 +40,7 @@ pub struct Board {
     pub ble: (bl706_ble::NativeTransport, bl706_ble::Runner),
     pub software_interrupt: bl706_hal::executor::InterruptToken,
     pub log: Logger,
+    pub commands: rtt_target::DownChannel,
     pub heater: crate::heater_io::Carrier,
     pub heater_timer: bl706_hal::timer::Timer<0>,
     pub watchdog: bl706_hal::watchdog::Watchdog,
@@ -54,18 +55,33 @@ pub struct Board {
 
 pub fn board() -> Board {
     #[cfg(not(feature = "pd-diagnostics"))]
-    rtt_target::rtt_init_print!(rtt_target::ChannelMode::NoBlockSkip, 4096);
+    let commands = {
+        let channels = rtt_target::rtt_init! {
+            up: {
+                0: { size: 4096, mode: rtt_target::ChannelMode::NoBlockSkip, name: "Terminal" }
+            }
+            down: {
+                0: { size: 128, name: "Commands" }
+            }
+        };
+        rtt_target::set_print_channel(channels.up.0);
+        channels.down.0
+    };
     #[cfg(feature = "pd-diagnostics")]
-    {
+    let commands = {
         let channels = rtt_target::rtt_init! {
             up: {
                 0: { size: 8192, mode: rtt_target::ChannelMode::NoBlockSkip, name: "Terminal" }
                 1: { size: 8192, mode: rtt_target::ChannelMode::NoBlockSkip, name: "PD I2C" }
             }
+            down: {
+                0: { size: 128, name: "Commands" }
+            }
         };
         rtt_target::set_print_channel(channels.up.0);
         crate::pd_trace::init_channel(channels.up.1);
-    }
+        channels.down.0
+    };
     // Single core, before enabling interrupts or spawning any tasks.
     unsafe {
         log::set_logger_racy(&RTT_LOG).unwrap();
@@ -151,6 +167,7 @@ pub fn board() -> Board {
         ble,
         software_interrupt: p.software_interrupt,
         log: Logger,
+        commands,
         heater,
         heater_timer,
         watchdog,

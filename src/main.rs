@@ -12,6 +12,7 @@ mod heater_test;
 mod pd;
 #[cfg(feature = "pd-diagnostics")]
 mod pd_trace;
+mod rtt_commands;
 
 use bl706_hal::i2c::I2c;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
@@ -68,6 +69,7 @@ extern "C" fn __bl706_main() -> ! {
             s.spawn(ble_host(b.ble.0).unwrap());
         }
         s.spawn(heartbeat::run(b.log).unwrap());
+        s.spawn(rtt_commands::run(b.commands).unwrap());
         s.spawn(
             control::run(
                 b.adc,

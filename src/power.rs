@@ -43,17 +43,44 @@ pub struct Choice {
 /// an idle contract is allowed; the independent heater interlock requires R.
 /// Never select PPS/AVS, an SPR >20 V PDO, or any voltage above 28 V.
 pub fn choose(caps: &SourceCapabilities, resistance_mohm: Option<u32>) -> Option<Choice> {
+    choose_inner(caps, resistance_mohm, false)
+}
+
+/// Select an SPR PDO even while the policy engine is still in EPR mode.
+/// The request must retain EPR framing until EPR_Mode(Exit) has completed.
+pub fn choose_spr(caps: &SourceCapabilities, resistance_mohm: Option<u32>) -> Option<Choice> {
+    choose_inner(caps, resistance_mohm, true)
+}
+
+/// This predicate is used only for a request confirmed by PS_RDY. Voltage alone
+/// does not prove that the contract references an SPR PDO (positions 1..=7).
+pub fn is_spr_request(request: &PowerSource) -> bool {
+    let position = match request {
+        PowerSource::FixedVariableSupply(r) => r.object_position(),
+        PowerSource::EprRequest(r) => r.object_position(),
+        _ => return false,
+    };
+    (1..=7).contains(&position)
+}
+
+fn choose_inner(
+    caps: &SourceCapabilities,
+    resistance_mohm: Option<u32>,
+    spr_only: bool,
+) -> Option<Choice> {
     let safe = caps.vsafe_5v()?;
     if safe.voltage().get::<millivolt>() != 5_000 || safe.max_current().get::<milliampere>() == 0 {
         return None;
     }
     let epr = caps.is_epr_capabilities();
-    let current_limit = if epr {
+    let current_limit = if epr && !spr_only {
         EPR_MAX_CURRENT_MA
     } else {
         SPR_MAX_CURRENT_MA
     };
-    let candidates = caps.spr_pdos().chain(caps.epr_pdos().filter(|_| epr));
+    let candidates = caps
+        .spr_pdos()
+        .chain(caps.epr_pdos().filter(|_| epr && !spr_only));
     let (position, pdo) = candidates
         .filter_map(|(position, pdo)| {
             let PowerDataObject::FixedSupply(f) = pdo else {
@@ -61,7 +88,11 @@ pub fn choose(caps: &SourceCapabilities, resistance_mohm: Option<u32>) -> Option
             };
             let mv = f.voltage().get::<millivolt>();
             let ma = f.max_current().get::<milliampere>().min(current_limit);
-            let max_mv = if epr { EPR_TARGET_MV } else { TARGET_MV };
+            let max_mv = if epr && !spr_only {
+                EPR_TARGET_MV
+            } else {
+                TARGET_MV
+            };
             if !(9000..=max_mv).contains(&mv) || ma <= SUPPLY_MARGIN_MA {
                 return None;
             }
@@ -92,7 +123,7 @@ pub fn choose(caps: &SourceCapabilities, resistance_mohm: Option<u32>) -> Option
         .with_raw_max_operating_current((ma / 10) as u16)
         .with_no_usb_suspend(true)
         .with_usb_communications_capable(false)
-        .with_epr_mode_capable(epr || (EPR_ENABLED && caps.epr_mode_capable()));
+        .with_epr_mode_capable(epr || (!spr_only && EPR_ENABLED && caps.epr_mode_capable()));
     Some(Choice {
         request: if epr {
             // EPR_Request always includes both the RDO and a copy of the PDO,
@@ -279,6 +310,35 @@ mod tests {
         assert_eq!((limited.mv, limited.ma), (20000, 5000));
         let low = choose(&epr_caps(28000, 3000), Some(4000)).unwrap();
         assert_eq!((low.mv, low.ma), (9000, 3000));
+    }
+
+    #[test]
+    fn exiting_epr_requests_an_spr_pdo_with_epr_framing_and_three_amp_limit() {
+        let caps = epr_caps(28000, 5000);
+        let idle = choose_spr(&caps, None).unwrap();
+        assert_eq!((idle.mv, idle.ma), (20000, 3000));
+        assert!(is_spr_request(&idle.request));
+        let PowerSource::EprRequest(r) = idle.request else {
+            panic!()
+        };
+        assert_eq!(r.object_position(), 3);
+        assert_eq!(r.pdo, caps.pdos()[2]);
+        // The full heater pulse, rather than average power, limits the choice.
+        let loaded = choose_spr(&caps, Some(6200)).unwrap();
+        assert_eq!((loaded.mv, loaded.ma), (9000, 3000));
+        assert!(is_spr_request(&loaded.request));
+        assert!(!is_spr_request(&choose(&caps, None).unwrap().request));
+    }
+
+    #[test]
+    fn runtime_spr_policy_disables_epr_advertisement_in_spr_requests() {
+        let epr = epr_caps(28000, 5000);
+        let caps = SourceCapabilities::new_with_pdos(epr.pdos()[..3].iter().copied().collect());
+        let c = choose_spr(&caps, None).unwrap();
+        let PowerSource::FixedVariableSupply(r) = c.request else {
+            panic!()
+        };
+        assert!(!r.epr_mode_capable());
     }
 
     #[test]

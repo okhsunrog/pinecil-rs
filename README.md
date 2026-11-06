@@ -191,6 +191,27 @@ the first flash, then subsequent SPR development avoids cable switching. The dia
 `pd-manual-start` feature leaves PD disabled after boot until explicitly started
 through the debugger; see [the EPR bring-up notes](docs/epr-bringup.md).
 
+The firmware also accepts `pd spr\n` and `pd status\n` on RTT down-channel 0.
+`pd spr` requires heating OFF, latches SPR preference until reset, requests an
+SPR PDO using EPR framing while still in EPR, waits for PS_RDY, then sends
+EPR_Mode(Exit). Only after normal SPR negotiation completes does it log
+`PD SPR ready` and report `spr_ready=true`. A queued command or reduced VBUS
+alone does not confirm EPR exit. Rejected/pending power requests never authorize
+Exit. Default boots still prefer EPR; `pd-spr-only` fixes SPR preference at boot.
+
+With OpenOCD already attached, the existing capture helper can send either command:
+
+```sh
+uv run --no-project tools/pd_diagnostics.py --pd-command spr --seconds 10 path/to/programmed.elf
+uv run --no-project tools/pd_diagnostics.py --pd-command status --seconds 3 path/to/programmed.elf
+```
+
+Use the exact flashed ELF. Older images have no RTT down-channel and the helper
+rejects them before writing a command. This command path has passed software
+checks; its first hardware EPR-exit test is still pending. Installing it cannot
+add a command to an older running image. It is a power-policy command, not a
+Pinecil ROM-loader entry command; the KM003C `loader` command targets the meter.
+
 For intermittent PD faults, build with `--features pd-diagnostics`. PD starts
 automatically, while RTT channel 1 carries fixed 44-byte binary records of FIFO
 transactions, I2C errors and cancelled operations. Channel 0 retains text logs.
