@@ -27,8 +27,17 @@ fn execute(line: &[u8]) {
             crate::pd::spr_ready(),
             crate::pd::STATUS.try_get()
         ),
+        "motion status" => {
+            if let Some(state) = crate::accelerometer::MOTION.try_get() {
+                log::info!(
+                    "Motion {:?}, idle_ms={:?}",
+                    state,
+                    state.idle_ms(embassy_time::Instant::now().as_millis())
+                );
+            }
+        }
         "" => {}
-        _ => log::warn!("RTT commands: pd spr | pd status"),
+        _ => log::warn!("RTT commands: pd spr | pd status | motion status"),
     }
 }
 

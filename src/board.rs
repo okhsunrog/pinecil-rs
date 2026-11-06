@@ -71,7 +71,9 @@ pub fn board() -> Board {
     let commands = {
         let channels = rtt_target::rtt_init! {
             up: {
-                0: { size: 8192, mode: rtt_target::ChannelMode::NoBlockSkip, name: "Terminal" }
+                // Match the ordinary terminal size; leave room for application
+                // task futures below BLE's reserved RF calibration scratch.
+                0: { size: 4096, mode: rtt_target::ChannelMode::NoBlockSkip, name: "Terminal" }
                 1: { size: 8192, mode: rtt_target::ChannelMode::NoBlockSkip, name: "PD I2C" }
             }
             down: {

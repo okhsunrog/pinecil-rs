@@ -1,5 +1,7 @@
 //! UI state independent of the display, GPIO and heater hardware.
 
+use crate::motion::Orientation;
+
 pub const MIN_SETPOINT_C: u16 = 150;
 pub const MAX_SETPOINT_C: u16 = crate::heater::MAX_TARGET_C;
 pub const BRIGHTNESS: [u8; 4] = [8, 26, 64, 101];
@@ -22,7 +24,34 @@ pub enum ButtonEvent {
 pub enum Screen {
     Main,
     Brightness,
+    Rotation,
     Measurements,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RotationMode {
+    #[default]
+    Auto,
+    Right,
+    Left,
+}
+
+impl RotationMode {
+    pub fn orientation(self, detected: Orientation) -> Orientation {
+        match self {
+            Self::Auto => detected,
+            Self::Right => Orientation::Right,
+            Self::Left => Orientation::Left,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "AUTO",
+            Self::Right => "RIGHT",
+            Self::Left => "LEFT",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,6 +59,7 @@ pub struct Ui {
     pub screen: Screen,
     pub setpoint_c: u16,
     pub heating_requested: bool,
+    pub rotation: RotationMode,
     chord_started_heating: bool,
     brightness_index: usize,
 }
@@ -40,6 +70,7 @@ impl Default for Ui {
             screen: Screen::Main,
             setpoint_c: MIN_SETPOINT_C,
             heating_requested: false,
+            rotation: RotationMode::Auto,
             chord_started_heating: false,
             brightness_index: 1,
         }
@@ -64,7 +95,8 @@ impl Ui {
             ButtonEvent::Long(Button::Plus) => {
                 self.screen = match self.screen {
                     Screen::Main | Screen::Measurements => Screen::Brightness,
-                    Screen::Brightness => Screen::Main,
+                    Screen::Brightness => Screen::Rotation,
+                    Screen::Rotation => Screen::Main,
                 };
             }
             ButtonEvent::Long(Button::Minus) => {
@@ -87,6 +119,15 @@ impl Ui {
                     };
                 }
                 Screen::Measurements => {}
+                Screen::Rotation => {
+                    self.rotation = match (self.rotation, button) {
+                        (RotationMode::Auto, Button::Plus)
+                        | (RotationMode::Left, Button::Minus) => RotationMode::Right,
+                        (RotationMode::Right, Button::Plus)
+                        | (RotationMode::Auto, Button::Minus) => RotationMode::Left,
+                        _ => RotationMode::Auto,
+                    };
+                }
             },
         }
         *self != previous
@@ -135,6 +176,8 @@ mod tests {
         assert_eq!(ui.brightness_level(), 3);
         assert_eq!(ui.setpoint_c, 150);
         ui.handle(ButtonEvent::Long(Button::Plus));
+        assert_eq!(ui.screen, Screen::Rotation);
+        ui.handle(ButtonEvent::Long(Button::Plus));
         assert_eq!(ui.screen, Screen::Main);
         assert_eq!(ui.contrast(), 64);
     }
@@ -180,6 +223,36 @@ mod tests {
         ui.handle(ButtonEvent::BothPressed);
         assert!(!ui.heating_requested);
         ui.handle(ButtonEvent::BothHeld);
+        assert!(!ui.heating_requested);
+    }
+
+    #[test]
+    fn rotation_setting_cycles_and_manual_mode_overrides_the_sensor() {
+        let mut ui = Ui::default();
+        ui.handle(ButtonEvent::Long(Button::Plus));
+        ui.handle(ButtonEvent::Long(Button::Plus));
+        assert_eq!(ui.screen, Screen::Rotation);
+        assert_eq!(
+            ui.rotation.orientation(Orientation::Left),
+            Orientation::Left
+        );
+        ui.handle(ButtonEvent::Short(Button::Plus));
+        assert_eq!(ui.rotation, RotationMode::Right);
+        assert_eq!(
+            ui.rotation.orientation(Orientation::Left),
+            Orientation::Right
+        );
+        ui.handle(ButtonEvent::Short(Button::Plus));
+        assert_eq!(ui.rotation, RotationMode::Left);
+        assert_eq!(
+            ui.rotation.orientation(Orientation::Right),
+            Orientation::Left
+        );
+        ui.handle(ButtonEvent::Short(Button::Plus));
+        assert_eq!(ui.rotation, RotationMode::Auto);
+        ui.handle(ButtonEvent::Short(Button::Minus));
+        assert_eq!(ui.rotation, RotationMode::Left);
+        assert_eq!(ui.setpoint_c, MIN_SETPOINT_C);
         assert!(!ui.heating_requested);
     }
 }

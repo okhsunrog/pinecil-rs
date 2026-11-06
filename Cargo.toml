@@ -52,6 +52,7 @@ embedded-hal-async = "1.0.0"
 fusb302b = { version = "0.2.0", features = ["log"] }
 log = { version = "0.4.35", features = ["release_max_level_info"] }
 rtt-target = "0.6.2"
+sc7a20-dd = { git = "https://github.com/okhsunrog/sc7a20-dd", rev = "efcd171736a6616dbf4ad6a96b334293db8b7f20", version = "0.1.0" }
 ssd1306 = { version = "0.10.0", features = ["async"] }
 static_cell = "2.1.1"
 

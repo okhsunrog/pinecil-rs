@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod accelerometer;
 mod board;
 mod buttons;
 mod control;
@@ -32,6 +33,7 @@ async fn application() {
         &buttons::EVENTS,
         pd::STATUS.receiver().unwrap(),
         control::MEASUREMENTS.receiver().unwrap(),
+        accelerometer::MOTION.receiver().unwrap(),
         &APP_STATE,
     )
     .await;
@@ -83,6 +85,7 @@ extern "C" fn __bl706_main() -> ! {
         );
         s.spawn(buttons::run(b.key_plus, b.key_minus).unwrap());
         s.spawn(application().unwrap());
+        s.spawn(accelerometer::run(I2cDevice::new(bus)).unwrap());
         s.spawn(
             display::run(
                 I2cDevice::new(bus),

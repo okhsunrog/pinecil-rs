@@ -8,6 +8,7 @@ pub mod app;
 pub mod ble;
 pub mod button_gestures;
 pub mod heater;
+pub mod motion;
 pub mod power;
 pub mod sensors;
 pub mod ui;

@@ -19,6 +19,7 @@ use embedded_graphics::{
 use heapless::String;
 use pinecil_rs::app::{AppState, StateReceiver};
 use pinecil_rs::heater::State as HeaterState;
+use pinecil_rs::motion::Orientation;
 use pinecil_rs::power::PowerStatus;
 use pinecil_rs::sensors::{Reading, SensorFault};
 use pinecil_rs::ui::Screen;
@@ -33,6 +34,7 @@ async fn render<D: DrawTarget<Color = BinaryColor>>(
         ui,
         power,
         measurements,
+        ..
     } = state;
     #[cfg(feature = "pd-diagnostics")]
     let prepare_start = Instant::now();
@@ -67,6 +69,10 @@ async fn render<D: DrawTarget<Color = BinaryColor>>(
         }
         Screen::Brightness => {
             write!(top, "LIGHT {}/4", ui.brightness_level()).unwrap();
+            "+/- HOLD+:ROT"
+        }
+        Screen::Rotation => {
+            write!(top, "ROT {}", ui.rotation.label()).unwrap();
             "+/- HOLD+:BACK"
         }
         Screen::Measurements => {
@@ -153,6 +159,7 @@ pub async fn run(
     let mut next_refresh = Instant::now() + Duration::from_secs(1);
     let mut needs_init = true;
     let mut applied_contrast = None;
+    let mut applied_orientation = None;
     let mut last_frame: Option<(AppState, bool)> = None;
     loop {
         if needs_init {
@@ -167,6 +174,7 @@ pub async fn run(
             }
             needs_init = false;
             applied_contrast = None;
+            applied_orientation = None;
             last_frame = None;
             log::info!("OLED ready");
         }
@@ -174,6 +182,22 @@ pub async fn run(
         // State changes during a flush are coalesced, never queued as frames.
         let state = snapshots.get().await;
         let ui = state.ui;
+        let orientation = state.display_orientation();
+        if applied_orientation != Some(orientation) {
+            let rotation = match orientation {
+                Orientation::Right => DisplayRotation::Rotate0,
+                Orientation::Left => DisplayRotation::Rotate180,
+            };
+            if let Err(error) = oled.set_rotation(rotation).await {
+                log::warn!("OLED rotation failed: {:?}; resetting display", error);
+                needs_init = true;
+                Timer::after_millis(250).await;
+                continue;
+            }
+            applied_orientation = Some(orientation);
+            // Both controller scan direction and buffered addressing change.
+            last_frame = None;
+        }
         if applied_contrast != Some(ui.contrast()) {
             if let Err(error) = oled
                 .set_brightness(Brightness::custom(0xf, ui.contrast()))

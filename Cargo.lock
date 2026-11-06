@@ -138,6 +138,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b7e4c2464d97fe331d41de9d5db0def0a96f4d823b8b32a2efd503578988973"
 
 [[package]]
+name = "bisync2"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "658874e13c636fdc15ecf8216421aec97113dc6256c1d2d506cd9b8f50b726e6"
+dependencies = [
+ "bisync2-macros",
+]
+
+[[package]]
+name = "bisync2-macros"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74205a74ee286fb937a71ab95ad3ebddf3c34650ae45dd755a3617c7c7dd1a26"
+
+[[package]]
 name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1216,6 +1231,7 @@ dependencies = [
  "heapless",
  "log",
  "rtt-target",
+ "sc7a20-dd",
  "ssd1306",
  "static_cell",
  "trouble-host",
@@ -1355,6 +1371,18 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+
+[[package]]
+name = "sc7a20-dd"
+version = "0.1.0"
+source = "git+https://github.com/okhsunrog/sc7a20-dd?rev=efcd171736a6616dbf4ad6a96b334293db8b7f20#efcd171736a6616dbf4ad6a96b334293db8b7f20"
+dependencies = [
+ "bisync2",
+ "device-driver",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "thiserror",
+]
 
 [[package]]
 name = "scoped-tls"

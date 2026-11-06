@@ -15,6 +15,8 @@ The current application includes:
 - A 96×16 OLED UI using async [`ssd1306`](https://crates.io/crates/ssd1306)
   and [`embedded-graphics`](https://crates.io/crates/embedded-graphics).
 - Async GPIO buttons with Embassy debounce and hold timers.
+- SC7A20 accelerometer acquisition through [`sc7a20-dd`](https://github.com/okhsunrog/sc7a20-dd),
+  automatic 180-degree display rotation and movement/idle timestamps.
 - BLE advertising and a read/write/notify counter service. Application settings
   and telemetry are not yet mapped to GATT characteristics.
 - ADC estimates of input voltage, handle temperature and tip
@@ -105,7 +107,7 @@ RTT logs travel over the same JTAG connection. UART wiring is unnecessary.
 
 ## Build from a standalone clone
 
-Cargo fetches the HAL and PAC from public Git repositories and
+Cargo fetches the HAL, PAC and SC7A20 driver from public Git repositories and
 [`fusb302b 0.2.0`](https://crates.io/crates/fusb302b/0.2.0) from crates.io.
 Every Git dependency is pinned to a revision, and `Cargo.lock` is committed.
 Only this repository needs to be cloned; the build does not use sibling
@@ -193,7 +195,9 @@ the first flash, then subsequent SPR development avoids cable switching. The dia
 `pd-manual-start` feature leaves PD disabled after boot until explicitly started
 through the debugger; see [the EPR bring-up notes](docs/epr-bringup.md).
 
-The firmware also accepts `pd spr\n` and `pd status\n` on RTT down-channel 0.
+The firmware accepts `pd spr\n`, `pd status\n` and `motion status\n` on RTT
+down-channel 0. The motion command reports raw XYZ, the last stable orientation,
+sample time and idle duration; stale or unavailable samples have no idle duration.
 `pd spr` requires heating OFF, latches SPR preference until reset, requests an
 SPR PDO using EPR framing while still in EPR, waits for PS_RDY, then sends
 EPR_Mode(Exit). Only after normal SPR negotiation completes does it log
@@ -254,14 +258,25 @@ The ordinary ELF remains available for symbols and RTT decoding.
 | Short `+` / `-` | Change the setpoint by 5 °C, within 150–350 °C |
 | Hold both buttons for 1 s while OFF | Request heating |
 | Press both buttons while heating | Stop heating; holding them longer keeps it OFF |
-| Hold `+` for 700 ms | Open or close the LIGHT brightness menu |
+| Hold `+` for 700 ms | Cycle Main → LIGHT → ROT → Main (also opens LIGHT from measurements) |
 | Short `+` / `-` in LIGHT | Choose one of four brightness levels |
+| Short `+` / `-` in ROT | Cycle AUTO, RIGHT and LEFT display orientation |
 | Hold `-` for 700 ms | Enter or leave the measurements page |
 
 The measurements page shows `IN` (ADC input-voltage estimate), `H` (handle
 temperature) and `TIP` (tip-temperature estimate). Short presses do not change
 settings on that page. Saturated/invalid sensors show an error instead of a
 stale temperature. See [conversion details and validation status](docs/measurements.md).
+
+Rotation defaults to AUTO. The SC7A20 is sampled asynchronously at 25 Hz in
+high-resolution ±2 g mode, sharing the 300 kHz bus with OLED and FUSB302B.
+A low-pass filter, a raw-count deadband and a 400 ms confirmation period prevent
+brief rolls from flipping the display. Flat/vertical poses retain the last
+orientation. RIGHT/LEFT override the sensor; settings currently last until reset.
+If acquisition fails, the display retains its last stable orientation and the
+task retries every two seconds without blocking the UI. Movement/idle data is
+available in application snapshots, but automatic sleep/wake is not implemented
+and movement never turns heating on.
 
 The footer shows PD status, such as `PD 28V 5.0A`, or menu controls. A moving
 square indicates ongoing UI updates. The displayed current is the negotiated
@@ -345,6 +360,7 @@ are declared in [Cargo.toml](Cargo.toml) and recorded in [Cargo.lock](Cargo.lock
 | OLED | I²C `0x3c`, reset GPIO3 active low |
 | Shared I²C | GPIO10 SCL / GPIO11 SDA, AF6, nominal 300 kHz |
 | FUSB302B | I²C `0x22`, INT_N GPIO16 active low |
+| SC7A20 | I²C `0x18`, WHO_AM_I `0x11`; sampled by a thread task, no GPIO IRQ required |
 | Buttons | `+` GPIO25 / `-` GPIO28, active high with pull-downs |
 | Heater drive | GPIO21 / PWM1, timer-limited carrier bursts; OFF at boot |
 | Cartridge probe | GPIO24, off/on/off resistance sensing with heating stopped |
