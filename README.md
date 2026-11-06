@@ -195,7 +195,8 @@ The firmware also accepts `pd spr\n` and `pd status\n` on RTT down-channel 0.
 `pd spr` requires heating OFF, latches SPR preference until reset, requests an
 SPR PDO using EPR framing while still in EPR, waits for PS_RDY, then sends
 EPR_Mode(Exit). Only after normal SPR negotiation completes does it log
-`PD SPR ready` and report `spr_ready=true`. A queued command or reduced VBUS
+`PD SPR ready: EPR inactive` and report `spr_ready=true`. Match that complete
+readiness message when automating a halt. A queued command or reduced VBUS
 alone does not confirm EPR exit. Rejected/pending power requests never authorize
 Exit. Default boots still prefer EPR; `pd-spr-only` fixes SPR preference at boot.
 
@@ -208,7 +209,8 @@ uv run --no-project tools/pd_diagnostics.py --pd-command status --seconds 3 path
 
 Use the exact flashed ELF. Older images have no RTT down-channel and the helper
 rejects them before writing a command. This command path has passed software
-checks; its first hardware EPR-exit test is still pending. Installing it cannot
+checks and has completed a hardware 28 V EPR → 15 V SPR transition. See the
+[runtime PD hardware record](docs/pd-runtime-hardware.md). Installing it cannot
 add a command to an older running image. It is a power-policy command, not a
 Pinecil ROM-loader entry command; the KM003C `loader` command targets the meter.
 

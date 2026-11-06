@@ -1,0 +1,67 @@
+## Serial Monitor Output
+
+Probe: BL706 via RTT
+Sent: 10 bytes to target
+Stopped: timeout reached
+Captured 6031 raw bytes
+
+```
+INFO us=49866011 PD preparing EPR exit: 15000 mV 3000 mA
+INFO us=49892768 sensors ms=49891 VIN_mV=Value(27740) handle_cC=Value(3205) tip_cC=Value(3205) counts=[Some(10925), Some(935), Some(9533)] trim=true errors=0 last_error=None
+INFO us=49893535 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=50
+INFO us=50105024 BLE irq=202 irq_max_us=77 schedule_max_us=348 wake_max_us=239
+INFO us=50261110 PD contract ready: 15000 mV 3000 mA (PS_RDY)
+INFO us=50261938 PD SPR PDO confirmed; sending EPR_Mode(Exit)
+INFO us=50269421 PD requesting 15000 mV 3000 mA
+INFO us=50306949 PD contract ready: 15000 mV 3000 mA (PS_RDY)
+INFO us=50307754 PD SPR ready: EPR inactive, confirmed contract Some((15000, 3000))
+INFO us=50992469 sensors ms=50991 VIN_mV=Value(14978) handle_cC=Value(3207) tip_cC=Value(3207) counts=[Some(5899), Some(934), Some(9536)] trim=true errors=0 last_error=None
+INFO us=50993244 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=51
+INFO us=52094407 sensors ms=52093 VIN_mV=Value(14978) handle_cC=Value(3204) tip_cC=Value(3204) counts=[Some(5899), Some(959), Some(9532)] trim=true errors=0 last_error=None
+INFO us=52095183 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=52
+heartbeat tick=53
+INFO us=53192586 sensors ms=53191 VIN_mV=Value(14978) handle_cC=Value(3205) tip_cC=Value(3205) counts=[Some(5899), Some(937), Some(9533)] trim=true errors=0 last_error=None
+INFO us=53193260 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=54
+INFO us=54292623 sensors ms=54291 VIN_mV=Value(14978) handle_cC=Value(3187) tip_cC=Value(3187) counts=[Some(5899), Some(921), Some(9506)] trim=true errors=0 last_error=None
+INFO us=54293378 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=55
+INFO us=55106625 BLE irq=208 irq_max_us=84 schedule_max_us=182 wake_max_us=1385
+INFO us=55392483 sensors ms=55391 VIN_mV=Value(14981) handle_cC=Value(3204) tip_cC=Value(3204) counts=[Some(5900), Some(937), Some(9532)] trim=true errors=0 last_error=None
+INFO us=55393209 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=56
+INFO us=56492520 sensors ms=56491 VIN_mV=Value(14983) handle_cC=Value(3206) tip_cC=Value(3206) counts=[Some(5901), Some(958), Some(9534)] trim=true errors=0 last_error=None
+INFO us=56493264 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=57
+INFO us=57592556 sensors ms=57591 VIN_mV=Value(14981) handle_cC=Value(3202) tip_cC=Value(3202) counts=[Some(5900), Some(923), Some(9529)] trim=true errors=0 last_error=None
+INFO us=57593293 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=58
+INFO us=58692519 sensors ms=58691 VIN_mV=Value(14981) handle_cC=Value(3210) tip_cC=Value(3210) counts=[Some(5900), Some(913), Some(9540)] trim=true errors=0 last_error=None
+INFO us=58693264 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=59
+INFO us=59792493 sensors ms=59791 VIN_mV=Value(14983) handle_cC=Value(3211) tip_cC=Value(3211) counts=[Some(5901), Some(943), Some(9542)] trim=true errors=0 last_error=None
+heartbeat tick=60
+heartbeat tick=61
+heartbeat tick=62
+63
+INFO us=71893023 sensors ms=71891 VIN_mV=Value(14978) handle_cC=Value(3208) tip_cC=Value(3208) counts=[Some(5899), Some(944), Some(9538)] trim=true errors=0 last_error=None
+INFO us=71894056 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=72
+INFO us=72992516 sensors ms=72991 VIN_mV=Value(14991) handle_cC=Value(3214) tip_cC=Value(3214) counts=[Some(5904), Some(919), Some(9546)] trim=true errors=0 last_error=None
+INFO us=72993288 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=73
+INFO us=74092537 sensors ms=74091 VIN_mV=Value(14996) handle_cC=Value(3212) tip_cC=Value(3212) counts=[Some(5906), Some(923), Some(9544)] trim=true errors=0 last_error=None
+INFO us=74093309 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=74
+INFO us=75192478 sensors ms=75191 VIN_mV=Value(14983) handle_cC=Value(3212) tip_cC=Value(3212) counts=[Some(5901), Some(920), Some(9544)] trim=true errors=0 last_error=None
+INFO us=75193239 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=75
+INFO us=75216677 BLE irq=214 irq_max_us=88 schedule_max_us=78 wake_max_us=188
+heartbeat tick=76
+INFO us=76292698 sensors ms=76291 VIN_mV=Value(14991) handle_cC=Value(3210) tip_cC=Value(3210) counts=[Some(5904), Some(930), Some(9540)] trim=true errors=0 last_error=None
+INFO us=76293455 heater Off target_C=150 R_mOhm=Ok(6200) est_mW=0 burst_us=0 cutoff=Stats { completed: 2, cancelled: 0, last_duration_us: 2003, max_late_us: 44, active: false }
+heartbeat tick=77
+```

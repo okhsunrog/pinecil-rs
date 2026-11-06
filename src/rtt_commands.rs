@@ -19,7 +19,7 @@ fn execute(line: &[u8]) {
                 return;
             }
             crate::pd::request_spr();
-            log::info!("PD SPR requested; wait for PD SPR ready before halting");
+            log::info!("PD SPR requested; negotiation pending");
         }
         "pd status" => log::info!(
             "PD status: spr_requested={} spr_ready={} power={:?}",

@@ -1,0 +1,78 @@
+{
+  "epr_request_spr_pdo": {
+    "wire_hex": "89262cb144412cb11400",
+    "host_elapsed_us": 243869688,
+    "meter_end_us": 7569462432
+  },
+  "epr_exit": {
+    "wire_hex": "8a1800000005",
+    "meter_end_us": 7569850219
+  },
+  "spr_request": {
+    "wire_hex": "821a2cb10441",
+    "meter_end_us": 7569858093
+  },
+  "spr_ps_rdy_meter_us": 7569891845,
+  "request_to_spr_ps_rdy_us": 429413,
+  "hard_or_cable_resets_in_window": 0,
+  "adc_records": 554,
+  "adc_voltage_uv_min": 14976361,
+  "adc_voltage_uv_max": 27906634,
+  "capture_sha256": "ffa21001588c1501577f4be07a49998547f9fa00140699d5701448dcb3546e17",
+  "startup_hard_resets_in_full_record": [
+    39934652,
+    192822686
+  ],
+  "date": "2026-11-06",
+  "policy_source_revision": "da13e97fe145241608faf6520a12603cc2f37c2a",
+  "epr_payload_sha256": "d5b0c32112080e9676eb12dcb0257553cc7f04521d9e37068bdd49f634a86369",
+  "final_spr_payload_sha256": "7b5628e1e0d7ec799ab539e86b1862c395c68fc96674fd02b0e2566341013446",
+  "final_features": [
+    "ble",
+    "fpu",
+    "pd-spr-only"
+  ],
+  "downloads_verified": [
+    {
+      "image": "spr-console",
+      "verify": true
+    },
+    {
+      "image": "epr-console",
+      "verify": true
+    },
+    {
+      "image": "spr-console-final",
+      "verify": true
+    }
+  ],
+  "heater_enabled": false,
+  "final_last_20_seconds": {
+    "samples": 889,
+    "vbus_uv_min": 14976947,
+    "vbus_uv_max": 14984564
+  },
+  "final_startup_reset_ordered_sets": [
+    {
+      "event": {
+        "data": {
+          "Reset": {
+            "end_us": 7875251007,
+            "input": 1,
+            "kind": "Hard",
+            "sequence": 1
+          }
+        },
+        "type": "pd"
+      },
+      "host_elapsed_us": 2397353
+    }
+  ],
+  "final_ble": {
+    "result": "pass",
+    "cycles": 1,
+    "notification_seconds": 8,
+    "notifications_received": 8,
+    "counter_write_read": 1000
+  }
+}

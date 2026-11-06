@@ -1,0 +1,17 @@
+Found C2:00:00:0B:07:06: Pinecil Rust
+Connected 0
+Service 00001800-0000-1000-8000-00805f9b34fb
+Service b1706000-0000-4000-8000-000000000001
+Service 00001801-0000-1000-8000-00805f9b34fb
+Read 1
+Write/read verified 1000
+Notification 1001
+Notification 1002
+Notification 1003
+Notification 1004
+Notification 1005
+Notification 1006
+Notification 1007
+Notification 1008
+Disconnected 0
+PASS: 1 connect/read/write/notify/disconnect cycles
