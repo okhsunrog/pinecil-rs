@@ -35,7 +35,7 @@ The current application includes:
   verification, resets the core and attaches RTT.
 
 **Heating starts OFF after every boot.** Holding both buttons for one second
-requests heating; pressing both again stops it. Sensor values are nominal
+on the main screen requests heating; pressing both again stops it. Sensor values are nominal
 estimates, not independently calibrated hot-tip temperatures. See the
 [heater design, interlocks and qualification status](docs/heating.md).
 Flashing this project replaces the firmware already installed on the iron,
@@ -253,31 +253,42 @@ The ordinary ELF remains available for symbols and RTT decoding.
 
 ## Controls and display
 
-The two-button menu has a root list (`TEMPERATURE`, `DISPLAY`,
-`MEASUREMENTS`, `DEFAULTS`, `BACK`) and a Display submenu (`BRIGHTNESS`,
-`ROTATION`, `BACK`). The upper row shows the selected item and its position;
-short presses move through the list in either direction, with wraparound.
+The settings controls follow [IronOS](https://ralim.github.io/IronOS/Menu/#settings-mode):
+`-` advances to the next item, `+` opens a category or cycles the selected value,
+and pressing both buttons returns one level. Passing the last item also returns
+one level. Values change immediately; no separate editor or confirmation is
+needed, except for restoring defaults.
 
-| Input | Main screen | Menu / editor |
+The root categories are SOLDERING (setpoint), DISPLAY (brightness, rotation),
+and ADVANCED (restore defaults). Setting screens show a short two-line label,
+a larger value on the right and a position indicator along the right edge.
+Only settings implemented by this firmware are listed.
+
+| Input | Main screen | Settings |
 |---|---|---|
-| Short `+` / `-` | Change the setpoint by 5 °C, within 150–350 °C | Next/previous menu item, or adjust the draft value |
-| Hold `+` for 700 ms | Open settings | Select an item; confirm an edited value |
-| Hold `-` for 700 ms | Open measurements | Back; cancel an edited value |
-| Hold both for 1 s while OFF | Request heating | Keep heating OFF |
-| Press both while heating | Stop heating immediately | Stop heating immediately; a longer hold keeps it OFF |
+| Short `-` while OFF | Open settings | Advance to the next item; passing the last returns to the parent |
+| Short `+` | Open temperature adjustment without starting heat | Open a category or cycle the setting value |
+| Hold `+` | Open temperature adjustment | Repeat the selected action |
+| Hold `-` | Open measurements | Advance repeatedly through items and back to the main screen |
+| Press both | Stop heating | Stop heating and return one level |
+| Hold both for 1 s, begun on Main while OFF | Request heating | Return without starting heat |
 
-An editor previews brightness and rotation immediately. Holding `+` applies the
-value; holding `-` restores the committed value. A temperature draft does not
-change the controller target until confirmed. Navigation and cancellation never
-schedule a flash write. Confirmed changes use the same settings model as RTT
-commands, with automatic persistence when a safe window is available. A remote
-command for the field being edited closes that editor; unrelated remote changes
-are preserved when the draft is applied. `DEFAULTS` asks for a separate hold to
-confirm, restores 150 °C / brightness 2 / AUTO and stops heating.
+Holding a button repeats after 700 ms, initially every 200 ms and then every
+100 ms after two seconds. On the separate temperature screen, `+` / `-` change
+the setpoint by 5 °C within 150–350 °C; both buttons return to Main. While
+heating, either short button opens that adjustment screen. Starting heating
+still requires a deliberate two-button hold on Main; adopting the settings
+controls does not adopt IronOS's single-button heating start.
 
-For example, hold `+`, tap `+` to select DISPLAY, hold `+` to open it, then
-hold `+` again to edit BRIGHTNESS. Tap `+` or `-`, hold `+` to apply, and
-hold `-` twice to return to the main screen.
+For example: from Main while OFF, press `-` twice to select DISPLAY, then `+`
+to open BRIGHTNESS. Each `+` cycles through levels 1–4; `-` advances to ROTATION.
+Press both to return to DISPLAY, then both again to return to Main.
+
+Changes are applied to the current settings immediately. Flash persistence waits
+until the settings menu is closed, edits have settled and the storage safety
+conditions are satisfied. Unplugging before saving loses those changes.
+RESTORE DEFAULTS asks for `+ YES / - NO`; confirmation restores 150 °C,
+brightness 2 and AUTO and stops heating.
 
 The measurements page shows `IN` (ADC input-voltage estimate), `H` (handle
 temperature) and `TIP` (tip-temperature estimate). Short presses do not change
@@ -303,8 +314,9 @@ keeps the current heating request; use both buttons to stop from any page.
 Heating can only be started from the main screen. After a fault, switch OFF before restarting.
 
 The full addressable panel is **96×16 pixels**, with a 192-byte framebuffer.
-The header keeps its 6×10 glyphs with blank padding clipped to eight rows;
-the footer uses a 5×8 font in the other eight rows. The controller's larger RAM
+The main-screen header uses 6×10 glyphs with blank padding clipped to eight rows;
+the footer uses a 5×8 font in the other eight rows. Settings use two 5×8 label
+lines beside a larger 7×13 value. The controller's larger RAM
 does not add physical pixels. See the
 [panel drawing](https://files.pine64.org/doc/datasheet/pinecil/1810010328_UG-Univision-Semicon-UG-9616TSWCG02_C88335.pdf)
 and [PINE64 specifications](https://pine64.org/documentation/Pinecil/_full/#specifications).

@@ -6,8 +6,7 @@ use pinecil_rs::{
     motion::MotionState,
     power::PowerStatus,
     sensors::{Measurements, Reading},
-    settings::RotationMode,
-    ui::{Edit, MenuItem, Screen, Ui},
+    ui::{MenuItem, Screen, Ui},
     view::{Frame, SIZE},
 };
 use std::{convert::Infallible, io::Write};
@@ -37,14 +36,13 @@ fn main() -> std::io::Result<()> {
     let path = std::env::args().nth(1).expect("output BMP path");
     let mut screens = vec![Screen::Main];
     screens.extend(MenuItem::ROOT.into_iter().map(Screen::Menu));
+    screens.extend(MenuItem::SOLDERING.into_iter().map(Screen::Menu));
     screens.extend(MenuItem::DISPLAY.into_iter().map(Screen::Menu));
+    screens.extend(MenuItem::ADVANCED.into_iter().map(Screen::Menu));
     screens.extend([
-        Screen::Edit(Edit::Temperature(175)),
-        Screen::Edit(Edit::Brightness(3)),
-        Screen::Edit(Edit::Rotation(RotationMode::Auto)),
-        Screen::Edit(Edit::Rotation(RotationMode::Right)),
+        Screen::Temperature,
         Screen::ConfirmDefaults,
-        Screen::Measurements { from_menu: true },
+        Screen::Measurements,
     ]);
     let mut pixels = vec![0u8; 3 * 312 * 110];
     for (n, screen) in screens.into_iter().enumerate() {

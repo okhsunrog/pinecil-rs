@@ -3,6 +3,9 @@ use crate::ui::{Button, ButtonEvent};
 const DEBOUNCE_MS: u64 = 25;
 const HOLD_MS: u64 = 700;
 const CHORD_MS: u64 = 1000;
+const REPEAT_MS: u64 = 200;
+const FAST_REPEAT_MS: u64 = 100;
+const FAST_REPEAT_AFTER_MS: u64 = 2000;
 
 #[derive(Default)]
 pub struct Gestures {
@@ -11,6 +14,7 @@ pub struct Gestures {
     raw_since: u64,
     pressed_at: [u64; 2],
     long_sent: u8,
+    repeat_at: [u64; 2],
     chord: Option<(u64, bool)>,
 }
 impl Gestures {
@@ -66,7 +70,24 @@ impl Gestures {
                     && ms - self.pressed_at[n] >= HOLD_MS
                 {
                     self.long_sent |= bit;
+                    self.repeat_at[n] = ms + REPEAT_MS;
                     return Some(ButtonEvent::Long(if n == 0 {
+                        Button::Plus
+                    } else {
+                        Button::Minus
+                    }));
+                }
+                if self.raw & self.stable & bit != 0
+                    && self.long_sent & bit != 0
+                    && ms >= self.repeat_at[n]
+                {
+                    let interval = if ms - self.pressed_at[n] >= FAST_REPEAT_AFTER_MS {
+                        FAST_REPEAT_MS
+                    } else {
+                        REPEAT_MS
+                    };
+                    self.repeat_at[n] = ms + interval;
+                    return Some(ButtonEvent::Repeat(if n == 0 {
                         Button::Plus
                     } else {
                         Button::Minus
@@ -110,10 +131,34 @@ mod tests {
         let mut event = None;
         for ms in 0..1200 {
             if let Some(e) = g.update(ms, false, (100..1000).contains(&ms)) {
-                assert!(event.is_none());
-                event = Some(e);
+                if !matches!(e, ButtonEvent::Repeat(_)) {
+                    assert!(event.is_none());
+                    event = Some(e);
+                }
             }
         }
         assert_eq!(event, Some(ButtonEvent::Long(Button::Minus)));
+    }
+    #[test]
+    fn holding_repeats_faster_and_release_stops_repetition_immediately() {
+        let mut gestures = Gestures::default();
+        let mut repeats = std::vec::Vec::new();
+        for ms in 0..3000 {
+            if let Some(event) = gestures.update(ms, (100..2600).contains(&ms), false) {
+                assert!(ms < 2600);
+                match event {
+                    ButtonEvent::Long(Button::Plus) => {}
+                    ButtonEvent::Repeat(Button::Plus) => repeats.push(ms),
+                    other => panic!("unexpected event: {:?}", other),
+                }
+            }
+        }
+        assert!(repeats.len() > 6);
+        assert_eq!(repeats[1] - repeats[0], REPEAT_MS);
+        assert_eq!(
+            repeats[repeats.len() - 1] - repeats[repeats.len() - 2],
+            FAST_REPEAT_MS
+        );
+        assert!(gestures.idle());
     }
 }

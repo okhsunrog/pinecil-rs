@@ -1,7 +1,7 @@
 # Tip control
 
-Heating starts **OFF after every boot**. Hold both buttons for one second to
-request heating; pressing both again stops it after debounce, without waiting
+Heating starts **OFF after every boot**. Hold both buttons for one second on
+the main screen to request heating; pressing both again stops it after debounce, without waiting
 for another long hold. Ordinary setpoint, brightness and measurement-page
 buttons do not start heating. A fault latches until an explicit OFF request.
 The initial setpoint is 150 C, matching the first sustained hardware test.

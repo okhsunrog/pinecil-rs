@@ -29,7 +29,7 @@ Tip controller -- one bounded burst --> TIMER0/PWM1 owner
 | `main.rs` | Wires shared resources and starts the thread and PD executors. |
 | `buttons.rs` / `button_gestures.rs` | Own button GPIOs, debounce input and recognize short/long presses and two-button chords. |
 | `app.rs` | Owns UI settings and combines buttons, power status, measurements and motion. Runs without display or GPIO dependencies and is tested on the host. |
-| `ui.rs` | Owns typed menu navigation, field-specific edit drafts, confirm/cancel, previews and heater request gestures. |
+| `ui.rs` | Owns typed menu navigation, direct setting changes, confirmation for defaults and heater request gestures. |
 | `view.rs` / `display.rs` | The pure view formats and draws 96×16 frames on any embedded-graphics target; the OLED task owns I2C/reset, applies brightness/rotation and recovers after errors. |
 | `accelerometer.rs` / `motion.rs` | Acquire SC7A20 raw XYZ on the shared bus; filter rotation, track movement and invalidate stale/missing motion data. No heater requests are generated. |
 | `pd.rs` / `power.rs` | Own the FUSB302B/PD engine and select an allowed power contract. |
@@ -83,35 +83,37 @@ setpoints or power transitions and must not serve as the future safety monitor.
 Negotiated voltage/current describe the PD contract. ADC VIN is a separate
 measurement estimate; actual heater current/consumption is not measured.
 
-## Menu and settings transactions
+## Menu and settings ownership
 
-`Ui` separates the active `Screen` from committed `Settings`. `MenuItem` defines
-the two bounded menu groups, their order and return destinations. `Screen::Edit`
-carries only the field being edited, using a typed `Edit` value. There is no heap
-allocation, generic menu framework or dynamic callback tree.
+The interaction follows the [IronOS settings controls](https://ralim.github.io/IronOS/Menu/#settings-mode),
+with an independently implemented Rust state machine. Short minus advances the
+selection and short plus enters a category or cycles its value. Passing the end
+returns to the parent, as does pressing both buttons. Held buttons repeat, with
+acceleration after two seconds. Only restoring defaults needs confirmation.
 
-Short presses navigate or change a draft. Hold plus selects/applies; hold minus
-returns/cancels. The measurements shortcut remembers whether it came from the
-main screen or menu. Temperature edits become controller requests only after
-confirmation. Brightness/rotation drafts affect only display presentation until
-confirmed; cancellation restores the committed presentation. Storage observes
-committed `Ui.settings`, so drafts never enter its save/debounce path.
+`MenuItem` defines category membership and return destinations. `Ui.settings`
+contains immediately applied settings, with no separate field editor, drafts
+or cancel transaction. RTT commands enter the same application task and update
+the same model. Temperature adjustment is a separate bounded plus/minus page;
+it never starts heating. The measurements shortcut remains read-only.
 
-RTT settings commands enter the same application task. Applying an unrelated
-command does not overwrite a draft or discard that remote change on confirmation.
-A valid command for the edited field (including a no-op) dismisses the conflicting
-editor. Invalid commands leave both settings and navigation intact.
+Storage sees the changed settings but defers starting a write while
+`Ui::settings_open()` is true. It rechecks the latest menu state after obtaining
+the BLE maintenance permit. Closing the menu does not override the heater-OFF,
+SPR and radio safety requirements; persistence remains asynchronous. An already
+started flash operation finishes without cancellation. The stored schema is
+unchanged, and contains neither navigation nor heating enable.
 
-Every two-button press immediately clears the heating request. A hold can start
-heating only if that chord began on the main screen while OFF; navigating through
-a menu or releasing an editor cannot arm it. Restoring defaults requires explicit
-confirmation and clears the heating request. Persisted data contains neither
-navigation, drafts nor heating enable; the record schema is unchanged.
+Every two-button press immediately clears the heating request and, outside Main,
+returns one level. A hold can start heating only if that chord began on Main
+while OFF. A chord used to leave a menu or temperature screen cannot become a
+heating-start gesture after the screen changes.
 
-`view::Frame` owns bounded header/footer strings, not hardware. Its rendering is
-shared with the host `ui-preview` example. Tests check every menu/editor label
-against 96×16 pixel bounds. The display task still yields between preparing the
-frame, drawing each row and individual OLED I2C transactions.
+`view::Frame` formats and draws the physical 96×16 layout. Two 5×8 lines label
+a setting, beside a 7×13 value and a right-edge scrollbar. The same renderer is
+used by the host `ui-preview` example. The display task retains the yields
+between preparing the frame, drawing each stage and individual OLED I2C
+transactions, so changing presentation does not merge PD and rendering work.
 
 ## Scheduling and bus access
 

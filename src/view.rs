@@ -4,13 +4,13 @@ use crate::{
     heater::State as HeaterState,
     power::PowerStatus,
     sensors::{Reading, SensorFault},
-    ui::{Edit, MenuItem, Screen},
+    ui::{MenuItem, Screen},
 };
 use core::fmt::Write;
 use embedded_graphics::{
     mono_font::{
         MonoTextStyle,
-        ascii::{FONT_5X8, FONT_6X10},
+        ascii::{FONT_5X8, FONT_6X10, FONT_7X13},
     },
     pixelcolor::BinaryColor,
     prelude::*,
@@ -26,6 +26,8 @@ pub struct Frame {
     pub header: String<32>,
     pub footer: String<32>,
     pub heater: Option<&'static str>,
+    pub value: Option<String<8>>,
+    pub position: Option<(usize, usize)>,
 }
 impl Frame {
     pub fn new(state: &AppState) -> Self {
@@ -33,6 +35,8 @@ impl Frame {
             header: String::new(),
             footer: String::new(),
             heater: None,
+            value: None,
+            position: None,
         };
         let ui = state.ui;
         let measurements = state.measurements;
@@ -54,7 +58,7 @@ impl Frame {
                     HeaterState::Off => write!(h, "SET {}C", ui.settings.setpoint_c).unwrap(),
                 }
                 match state.power {
-                    PowerStatus::Waiting => f.push_str("PD WAIT HOLD+:MENU").unwrap(),
+                    PowerStatus::Waiting => f.push_str("PD WAIT -:SETTINGS").unwrap(),
                     PowerStatus::Requesting { mv } => {
                         write!(f, "PD {}V REQUEST", mv / 1000).unwrap()
                     }
@@ -65,41 +69,55 @@ impl Frame {
                 }
             }
             Screen::Menu(item) => {
-                write!(
-                    h,
-                    "{} {}/{}",
-                    item.label(),
-                    item.position() + 1,
-                    item.group().len()
-                )
-                .unwrap();
+                frame.position = Some((item.position(), item.group().len()));
+                let mut value = String::new();
                 match item {
+                    MenuItem::Soldering => {
+                        h.push_str("SOLDERING").unwrap();
+                        f.push_str("TIP SETTINGS").unwrap();
+                    }
+                    MenuItem::Display => {
+                        h.push_str("DISPLAY").unwrap();
+                        f.push_str("SCREEN SETTINGS").unwrap();
+                    }
+                    MenuItem::Advanced => {
+                        h.push_str("ADVANCED").unwrap();
+                        f.push_str("DEVICE SETTINGS").unwrap();
+                    }
                     MenuItem::Temperature => {
-                        write!(f, "{}C HOLD+:EDIT", ui.settings.setpoint_c).unwrap()
+                        h.push_str("SETPOINT").unwrap();
+                        f.push_str("TEMP C").unwrap();
+                        write!(value, "{}", ui.settings.setpoint_c).unwrap();
                     }
                     MenuItem::Brightness => {
-                        write!(f, "{}/4 HOLD+:EDIT", ui.settings.brightness).unwrap()
+                        h.push_str("SCREEN").unwrap();
+                        f.push_str("BRIGHTNESS").unwrap();
+                        write!(value, "{}/4", ui.settings.brightness).unwrap();
                     }
                     MenuItem::Rotation => {
-                        write!(f, "{} HOLD+:EDIT", ui.settings.rotation.label()).unwrap()
+                        h.push_str("SCREEN").unwrap();
+                        f.push_str("ROTATION").unwrap();
+                        value.push_str(ui.settings.rotation.label()).unwrap();
                     }
-                    MenuItem::Back | MenuItem::DisplayBack => f.push_str("HOLD+:BACK").unwrap(),
-                    _ => f.push_str("HOLD+:OPEN -:BACK").unwrap(),
+                    MenuItem::Defaults => {
+                        h.push_str("RESTORE").unwrap();
+                        f.push_str("DEFAULTS").unwrap();
+                        value.push_str("GO").unwrap();
+                    }
+                }
+                if !value.is_empty() {
+                    frame.value = Some(value);
                 }
             }
-            Screen::Edit(edit) => {
-                match edit {
-                    Edit::Temperature(v) => write!(h, "SET {}C +/-", v).unwrap(),
-                    Edit::Brightness(v) => write!(h, "LIGHT {}/4 +/-", v).unwrap(),
-                    Edit::Rotation(v) => write!(h, "ROT {} +/-", v.label()).unwrap(),
-                }
-                f.push_str("HOLD+:OK -:CANCEL").unwrap();
+            Screen::Temperature => {
+                write!(h, "SET {}C", ui.settings.setpoint_c).unwrap();
+                f.push_str("+/- TEMP BOTH:BACK").unwrap();
             }
             Screen::ConfirmDefaults => {
                 h.push_str("RESET SETTINGS?").unwrap();
-                f.push_str("HOLD+:YES -:CANCEL").unwrap();
+                f.push_str("+ YES    - NO").unwrap();
             }
-            Screen::Measurements { .. } => {
+            Screen::Measurements => {
                 match measurements.tip_centi_c {
                     Reading::Value(v) => write!(h, "TIP {}C", v / 100).unwrap(),
                     Reading::Fault(SensorFault::Saturated) => h.push_str("TIP SAT").unwrap(),
@@ -120,7 +138,10 @@ impl Frame {
         }
         // Menu headings use the entire row. The status remains visible on the
         // main/measurement screens; a chord still stops heat on every screen.
-        if matches!(ui.screen, Screen::Main | Screen::Measurements { .. }) {
+        if matches!(
+            ui.screen,
+            Screen::Main | Screen::Temperature | Screen::Measurements
+        ) {
             frame.heater = Some(match measurements.heater.state {
                 HeaterState::Off => "OFF",
                 HeaterState::Heating => "ON",
@@ -135,6 +156,25 @@ impl Frame {
         &self,
         display: &mut D,
     ) -> Result<(), D::Error> {
+        if let Some(value) = &self.value {
+            let mut label = display.clipped(&Rectangle::new(Point::zero(), Size::new(54, 8)));
+            Text::with_baseline(
+                &self.header,
+                Point::zero(),
+                MonoTextStyle::new(&FONT_5X8, BinaryColor::On),
+                Baseline::Top,
+            )
+            .draw(&mut label)?;
+            let x = 92 - value.len() as i32 * 7;
+            Text::with_baseline(
+                value,
+                Point::new(x, 1),
+                MonoTextStyle::new(&FONT_7X13, BinaryColor::On),
+                Baseline::Top,
+            )
+            .draw(display)?;
+            return Ok(());
+        }
         let large = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
         // Uppercase glyphs occupy eight rows; clip the font's blank padding.
         let width = if self.heater.is_some() {
@@ -161,8 +201,18 @@ impl Frame {
             MonoTextStyle::new(&FONT_5X8, BinaryColor::On),
             Baseline::Top,
         )
-        .draw(&mut display.clipped(&Rectangle::new(Point::new(0, 8), Size::new(92, 8))))?;
-        if alive {
+        .draw(&mut display.clipped(&Rectangle::new(
+            Point::new(0, 8),
+            Size::new(if self.value.is_some() { 54 } else { 92 }, 8),
+        )))?;
+        if let Some((position, count)) = self.position {
+            Rectangle::new(
+                Point::new(95, (16 * position / count) as i32),
+                Size::new(1, (16 / count) as u32),
+            )
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+            .draw(display)?;
+        } else if alive {
             Rectangle::new(Point::new(93, 13), Size::new(3, 3))
                 .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
                 .draw(display)?;
@@ -187,41 +237,38 @@ mod tests {
         }
     }
     #[test]
-    fn every_menu_and_editor_fits_the_physical_panel() {
+    fn every_setting_fits_the_label_value_layout() {
         let mut state = state();
-        let mut screens = std::vec![
+        let items = MenuItem::ROOT
+            .iter()
+            .chain(MenuItem::SOLDERING.iter())
+            .chain(MenuItem::DISPLAY.iter())
+            .chain(MenuItem::ADVANCED.iter());
+        for &item in items {
+            state.ui.screen = Screen::Menu(item);
+            for rotation in [RotationMode::Auto, RotationMode::Right, RotationMode::Left] {
+                state.ui.settings.rotation = rotation;
+                let frame = Frame::new(&state);
+                if let Some(value) = &frame.value {
+                    assert!(frame.header.len() * 5 <= 54);
+                    assert!(frame.footer.len() * 5 <= 54);
+                    assert!(value.len() * 7 <= 38);
+                } else {
+                    assert!(frame.header.len() * 6 <= 94);
+                    assert!(frame.footer.len() * 5 <= 94);
+                }
+            }
+        }
+        for screen in [
             Screen::Main,
+            Screen::Temperature,
+            Screen::Measurements,
             Screen::ConfirmDefaults,
-            Screen::Measurements { from_menu: false }
-        ];
-        for &item in MenuItem::ROOT.iter().chain(MenuItem::DISPLAY.iter()) {
-            screens.push(Screen::Menu(item));
-        }
-        for v in [150, 350] {
-            screens.push(Screen::Edit(Edit::Temperature(v)));
-        }
-        for v in [1, 4] {
-            screens.push(Screen::Edit(Edit::Brightness(v)));
-        }
-        for v in [RotationMode::Auto, RotationMode::Right, RotationMode::Left] {
-            screens.push(Screen::Edit(Edit::Rotation(v)));
-        }
-        for screen in screens {
+        ] {
             state.ui.screen = screen;
             let frame = Frame::new(&state);
-            let header_width = if frame.heater.is_some() { 78 } else { 96 };
-            assert!(
-                frame.header.len() * 6 <= header_width,
-                "{:?}: {}",
-                screen,
-                frame.header
-            );
-            assert!(
-                frame.footer.len() * 5 <= 92,
-                "{:?}: {}",
-                screen,
-                frame.footer
-            );
+            assert!(frame.header.len() * 6 <= if frame.heater.is_some() { 78 } else { 96 });
+            assert!(frame.footer.len() * 5 <= 92);
         }
     }
     #[test]
@@ -229,7 +276,7 @@ mod tests {
         let mut state = state();
         state.measurements.heater.state = HeaterState::Fault(crate::heater::Fault::Sensor);
         assert_eq!(Frame::new(&state).header, "ERR ADC");
-        state.ui.screen = Screen::Measurements { from_menu: true };
+        state.ui.screen = Screen::Measurements;
         state.measurements.tip_centi_c = Reading::Fault(SensorFault::Saturated);
         let frame = Frame::new(&state);
         assert_eq!(frame.header, "TIP SAT");

@@ -121,7 +121,12 @@ pub async fn run(
             current.power,
             pinecil_rs::power::PowerStatus::Contract { mv: 1..=20_000, .. }
         );
-        if due.is_some_and(|t| Instant::now() >= t) && off && spr && crate::pd::spr_ready() {
+        if due.is_some_and(|t| Instant::now() >= t)
+            && off
+            && !current.ui.settings_open()
+            && spr
+            && crate::pd::spr_ready()
+        {
             // Block a new heat request while awaiting the radio permit, then
             // recheck the actual output before invoking any flash operation.
             BUSY.store(true, Ordering::Release);
@@ -131,7 +136,7 @@ pub async fn run(
             let radio_ready = true;
             let still_off = crate::APP_STATE
                 .try_get()
-                .is_some_and(|s| !s.ui.heating_requested)
+                .is_some_and(|s| !s.ui.heating_requested && !s.ui.settings_open())
                 && crate::control::MEASUREMENTS
                     .try_get()
                     .is_some_and(|s| s.heater.state == heater::State::Off);

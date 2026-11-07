@@ -122,8 +122,7 @@ pub async fn run(
                         HeaterState::Heating | HeaterState::Regulating
                     )
                     && previous.measurements.tip_centi_c != state.measurements.tip_centi_c
-                || matches!(ui.screen, Screen::Measurements { .. })
-                    && previous.measurements != state.measurements
+                || ui.screen == Screen::Measurements && previous.measurements != state.measurements
         });
         if redraw {
             #[cfg(feature = "pd-diagnostics")]

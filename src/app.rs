@@ -78,7 +78,7 @@ pub async fn run<M: RawMutex, const N: usize, const K: usize, const L: usize>(
                 state.ui.handle(event);
             }
             Either5::Fifth(command) => {
-                state.ui.apply_settings(command);
+                state.ui.settings.apply(command);
             }
         }
         if state != previous {
@@ -139,27 +139,18 @@ mod tests {
         assert_eq!(state.ui.settings.setpoint_c, 240);
         assert!(!state.ui.heating_requested);
 
-        // Storage consumes the same snapshots: editing a draft changes the
-        // screen, but must leave the persisted/controller settings untouched.
         for event in [
-            ButtonEvent::Long(Button::Plus),
-            ButtonEvent::Long(Button::Plus),
+            ButtonEvent::Short(Button::Minus),
+            ButtonEvent::Short(Button::Plus),
             ButtonEvent::Short(Button::Plus),
         ] {
             buttons.try_send(event).unwrap();
             drive(application.as_mut());
         }
-        let draft = snapshots.try_get().unwrap();
-        assert_eq!(draft.ui.settings.setpoint_c, 240);
-        assert_eq!(
-            draft.ui.screen,
-            Screen::Edit(crate::ui::Edit::Temperature(245))
-        );
-        buttons.try_send(ButtonEvent::Long(Button::Plus)).unwrap();
-        drive(application.as_mut());
-        let applied = snapshots.try_get().unwrap();
-        assert_eq!(applied.ui.settings.setpoint_c, 245);
-        assert!(!applied.ui.heating_requested);
+        let edited = snapshots.try_get().unwrap();
+        assert_eq!(edited.ui.settings.setpoint_c, 245);
+        assert!(edited.ui.settings_open());
+        assert!(!edited.ui.heating_requested);
     }
 
     #[test]
@@ -182,20 +173,20 @@ mod tests {
         ));
         drive(application.as_mut());
 
+        buttons.try_send(ButtonEvent::Short(Button::Plus)).unwrap();
+        drive(application.as_mut());
         // Do not poll the display while more events than the queue can hold
         // are processed. An OLED recovery must not stall application input.
         for _ in 0..crate::ui::MAX_SETPOINT_C {
             buttons.try_send(ButtonEvent::Short(Button::Plus)).unwrap();
             drive(application.as_mut());
         }
-        buttons.try_send(ButtonEvent::Long(Button::Plus)).unwrap();
-        drive(application.as_mut());
         for event in [
-            ButtonEvent::Short(Button::Plus), // Display
-            ButtonEvent::Long(Button::Plus),  // Brightness
-            ButtonEvent::Long(Button::Plus),  // edit
+            ButtonEvent::BothPressed,
+            ButtonEvent::Short(Button::Minus),
+            ButtonEvent::Short(Button::Minus),
             ButtonEvent::Short(Button::Plus),
-            ButtonEvent::Long(Button::Plus), // apply
+            ButtonEvent::Short(Button::Plus),
         ] {
             buttons.try_send(event).unwrap();
             drive(application.as_mut());
@@ -244,8 +235,10 @@ mod tests {
         drive(application.as_mut());
         assert_eq!(display.try_get().unwrap().power, power.try_get().unwrap());
 
-        buttons.try_send(ButtonEvent::Short(Button::Plus)).unwrap();
-        drive(application.as_mut());
+        for _ in 0..2 {
+            buttons.try_send(ButtonEvent::Short(Button::Plus)).unwrap();
+            drive(application.as_mut());
+        }
         power.sender().send(PowerStatus::Waiting);
         drive(application.as_mut());
         power.sender().send(PowerStatus::Error);
@@ -324,8 +317,10 @@ mod tests {
             ..Measurements::WAITING
         };
         measurements.sender().send(good);
-        buttons.try_send(ButtonEvent::Short(Button::Plus)).unwrap();
-        drive(application.as_mut());
+        for _ in 0..2 {
+            buttons.try_send(ButtonEvent::Short(Button::Plus)).unwrap();
+            drive(application.as_mut());
+        }
         assert_eq!(display.try_get().unwrap().measurements, good);
 
         // Keep the display idle while a later sample reports a tip failure.
@@ -378,13 +373,11 @@ mod tests {
         assert!(!state.ui.heating_requested);
 
         for event in [
-            ButtonEvent::Long(Button::Plus),  // root
-            ButtonEvent::Short(Button::Plus), // Display
-            ButtonEvent::Long(Button::Plus),  // Brightness
-            ButtonEvent::Short(Button::Plus), // Rotation
-            ButtonEvent::Long(Button::Plus),  // edit
-            ButtonEvent::Short(Button::Plus), // Right
-            ButtonEvent::Long(Button::Plus),  // apply
+            ButtonEvent::Short(Button::Minus),
+            ButtonEvent::Short(Button::Minus),
+            ButtonEvent::Short(Button::Plus),
+            ButtonEvent::Short(Button::Minus),
+            ButtonEvent::Short(Button::Plus),
         ] {
             buttons.try_send(event).unwrap();
             drive(application.as_mut());
