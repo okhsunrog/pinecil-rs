@@ -253,15 +253,31 @@ The ordinary ELF remains available for symbols and RTT decoding.
 
 ## Controls and display
 
-| Input | Action |
-|---|---|
-| Short `+` / `-` | Change the setpoint by 5 °C, within 150–350 °C |
-| Hold both buttons for 1 s while OFF | Request heating |
-| Press both buttons while heating | Stop heating; holding them longer keeps it OFF |
-| Hold `+` for 700 ms | Cycle Main → LIGHT → ROT → Main (also opens LIGHT from measurements) |
-| Short `+` / `-` in LIGHT | Choose one of four brightness levels |
-| Short `+` / `-` in ROT | Cycle AUTO, RIGHT and LEFT display orientation |
-| Hold `-` for 700 ms | Enter or leave the measurements page |
+The two-button menu has a root list (`TEMPERATURE`, `DISPLAY`,
+`MEASUREMENTS`, `DEFAULTS`, `BACK`) and a Display submenu (`BRIGHTNESS`,
+`ROTATION`, `BACK`). The upper row shows the selected item and its position;
+short presses move through the list in either direction, with wraparound.
+
+| Input | Main screen | Menu / editor |
+|---|---|---|
+| Short `+` / `-` | Change the setpoint by 5 °C, within 150–350 °C | Next/previous menu item, or adjust the draft value |
+| Hold `+` for 700 ms | Open settings | Select an item; confirm an edited value |
+| Hold `-` for 700 ms | Open measurements | Back; cancel an edited value |
+| Hold both for 1 s while OFF | Request heating | Keep heating OFF |
+| Press both while heating | Stop heating immediately | Stop heating immediately; a longer hold keeps it OFF |
+
+An editor previews brightness and rotation immediately. Holding `+` applies the
+value; holding `-` restores the committed value. A temperature draft does not
+change the controller target until confirmed. Navigation and cancellation never
+schedule a flash write. Confirmed changes use the same settings model as RTT
+commands, with automatic persistence when a safe window is available. A remote
+command for the field being edited closes that editor; unrelated remote changes
+are preserved when the draft is applied. `DEFAULTS` asks for a separate hold to
+confirm, restores 150 °C / brightness 2 / AUTO and stops heating.
+
+For example, hold `+`, tap `+` to select DISPLAY, hold `+` to open it, then
+hold `+` again to edit BRIGHTNESS. Tap `+` or `-`, hold `+` to apply, and
+hold `-` twice to return to the main screen.
 
 The measurements page shows `IN` (ADC input-voltage estimate), `H` (handle
 temperature) and `TIP` (tip-temperature estimate). Short presses do not change
@@ -281,8 +297,10 @@ and movement never turns heating on.
 The footer shows PD status, such as `PD 28V 5.0A`, or menu controls. A moving
 square indicates ongoing UI updates. The displayed current is the negotiated
 limit, not measured load current. `ON` / `REG` indicate heating/regulation;
-`ERR` indicates a latched controller fault. Menus keep the current heating
-request; use both buttons to stop. After a fault, switch OFF before restarting.
+`ERR` indicates a latched controller fault. The heater badge is shown on the
+main and measurements pages; menus use the full header width. Opening a menu
+keeps the current heating request; use both buttons to stop from any page.
+Heating can only be started from the main screen. After a fault, switch OFF before restarting.
 
 The full addressable panel is **96×16 pixels**, with a 192-byte framebuffer.
 The header keeps its 6×10 glyphs with blank padding clipped to eight rows;

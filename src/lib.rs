@@ -14,3 +14,4 @@ pub mod sensors;
 pub mod settings;
 pub mod settings_store;
 pub mod ui;
+pub mod view;

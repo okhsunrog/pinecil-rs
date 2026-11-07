@@ -29,8 +29,8 @@ Tip controller -- one bounded burst --> TIMER0/PWM1 owner
 | `main.rs` | Wires shared resources and starts the thread and PD executors. |
 | `buttons.rs` / `button_gestures.rs` | Own button GPIOs, debounce input and recognize short/long presses and two-button chords. |
 | `app.rs` | Owns UI settings and combines buttons, power status, measurements and motion. Runs without display or GPIO dependencies and is tested on the host. |
-| `ui.rs` | Implements bounded setpoint/brightness changes, rotation settings and page transitions. |
-| `display.rs` | Owns the OLED/reset pin, draws snapshots, applies brightness/rotation and retries initialization or recovery after errors. |
+| `ui.rs` | Owns typed menu navigation, field-specific edit drafts, confirm/cancel, previews and heater request gestures. |
+| `view.rs` / `display.rs` | The pure view formats and draws 96×16 frames on any embedded-graphics target; the OLED task owns I2C/reset, applies brightness/rotation and recovers after errors. |
 | `accelerometer.rs` / `motion.rs` | Acquire SC7A20 raw XYZ on the shared bus; filter rotation, track movement and invalidate stale/missing motion data. No heater requests are generated. |
 | `pd.rs` / `power.rs` | Own the FUSB302B/PD engine and select an allowed power contract. |
 | `control.rs` / `sensors.rs` | Own ADC, resistance probe and watchdog; acquire independent scans and convert nominal readings. |
@@ -82,6 +82,36 @@ state, not a lossless fault/event history. A slow display may skip intermediate
 setpoints or power transitions and must not serve as the future safety monitor.
 Negotiated voltage/current describe the PD contract. ADC VIN is a separate
 measurement estimate; actual heater current/consumption is not measured.
+
+## Menu and settings transactions
+
+`Ui` separates the active `Screen` from committed `Settings`. `MenuItem` defines
+the two bounded menu groups, their order and return destinations. `Screen::Edit`
+carries only the field being edited, using a typed `Edit` value. There is no heap
+allocation, generic menu framework or dynamic callback tree.
+
+Short presses navigate or change a draft. Hold plus selects/applies; hold minus
+returns/cancels. The measurements shortcut remembers whether it came from the
+main screen or menu. Temperature edits become controller requests only after
+confirmation. Brightness/rotation drafts affect only display presentation until
+confirmed; cancellation restores the committed presentation. Storage observes
+committed `Ui.settings`, so drafts never enter its save/debounce path.
+
+RTT settings commands enter the same application task. Applying an unrelated
+command does not overwrite a draft or discard that remote change on confirmation.
+A valid command for the edited field (including a no-op) dismisses the conflicting
+editor. Invalid commands leave both settings and navigation intact.
+
+Every two-button press immediately clears the heating request. A hold can start
+heating only if that chord began on the main screen while OFF; navigating through
+a menu or releasing an editor cannot arm it. Restoring defaults requires explicit
+confirmation and clears the heating request. Persisted data contains neither
+navigation, drafts nor heating enable; the record schema is unchanged.
+
+`view::Frame` owns bounded header/footer strings, not hardware. Its rendering is
+shared with the host `ui-preview` example. Tests check every menu/editor label
+against 96×16 pixel bounds. The display task still yields between preparing the
+frame, drawing each row and individual OLED I2C transactions.
 
 ## Scheduling and bus access
 

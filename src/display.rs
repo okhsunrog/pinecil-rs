@@ -2,27 +2,14 @@ use crate::SharedI2c;
 #[cfg(feature = "pd-diagnostics")]
 use crate::pd_trace;
 use bl706_hal::gpio;
-use core::fmt::Write;
 use embassy_futures::select::{Either, select};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_time::{Duration, Instant, Timer};
-use embedded_graphics::{
-    mono_font::{
-        MonoTextStyle,
-        ascii::{FONT_5X8, FONT_6X10},
-    },
-    pixelcolor::BinaryColor,
-    prelude::*,
-    primitives::{PrimitiveStyle, Rectangle},
-    text::{Baseline, Text},
-};
-use heapless::String;
+use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
 use pinecil_rs::app::{AppState, StateReceiver};
 use pinecil_rs::heater::State as HeaterState;
 use pinecil_rs::motion::Orientation;
-use pinecil_rs::power::PowerStatus;
-use pinecil_rs::sensors::{Reading, SensorFault};
-use pinecil_rs::ui::Screen;
+use pinecil_rs::{ui::Screen, view::Frame};
 use ssd1306::{I2CDisplayInterface, Ssd1306Async, prelude::*};
 
 async fn render<D: DrawTarget<Color = BinaryColor>>(
@@ -30,74 +17,10 @@ async fn render<D: DrawTarget<Color = BinaryColor>>(
     state: &AppState,
     alive: bool,
 ) -> Result<(), D::Error> {
-    let AppState {
-        ui,
-        power,
-        measurements,
-        ..
-    } = state;
     #[cfg(feature = "pd-diagnostics")]
     let prepare_start = Instant::now();
     display.clear(BinaryColor::Off)?;
-    let mut top: String<24> = String::new();
-    let mut power_text: String<32> = String::new();
-    match *power {
-        PowerStatus::Waiting => power_text.push_str("PD WAIT HOLD+:MENU").unwrap(),
-        PowerStatus::Requesting { mv } => write!(power_text, "PD {}V REQUEST", mv / 1000).unwrap(),
-        PowerStatus::Contract { mv, ma } => write!(
-            power_text,
-            "PD {}V {}.{}A",
-            mv / 1000,
-            ma / 1000,
-            (ma % 1000) / 100
-        )
-        .unwrap(),
-        PowerStatus::Error => power_text.push_str("PD ERROR").unwrap(),
-    }
-    let footer = match ui.screen {
-        Screen::Main => {
-            match measurements.heater.state {
-                HeaterState::Fault(fault) => write!(top, "ERR {}", fault.label()).unwrap(),
-                HeaterState::Heating | HeaterState::Regulating => {
-                    if let Reading::Value(tip) = measurements.tip_centi_c {
-                        write!(top, "{}/{}C", tip / 100, measurements.heater.target_c).unwrap();
-                    }
-                }
-                HeaterState::Off => write!(top, "SET {}C", ui.settings.setpoint_c).unwrap(),
-            }
-            power_text.as_str()
-        }
-        Screen::Brightness => {
-            write!(top, "LIGHT {}/4", ui.brightness_level()).unwrap();
-            "+/- HOLD+:ROT"
-        }
-        Screen::Rotation => {
-            write!(top, "ROT {}", ui.settings.rotation.label()).unwrap();
-            "+/- HOLD+:BACK"
-        }
-        Screen::Measurements => {
-            match measurements.tip_centi_c {
-                Reading::Value(temperature) => write!(top, "TIP {}C", temperature / 100).unwrap(),
-                Reading::Fault(SensorFault::Saturated) => top.push_str("TIP SAT").unwrap(),
-                Reading::Fault(_) => top.push_str("TIP ERR").unwrap(),
-                Reading::Pending => top.push_str("TIP ---").unwrap(),
-            }
-            power_text.clear();
-            match measurements.input_mv {
-                Reading::Value(mv) => {
-                    write!(power_text, "IN {}.{}V", mv / 1000, mv % 1000 / 100).unwrap()
-                }
-                _ => power_text.push_str("IN --.-V").unwrap(),
-            }
-            match measurements.handle_centi_c {
-                Reading::Value(temperature) => {
-                    write!(power_text, " H{}C", temperature / 100).unwrap()
-                }
-                _ => power_text.push_str(" H--C").unwrap(),
-            }
-            power_text.as_str()
-        }
-    };
+    let frame = Frame::new(state);
     #[cfg(feature = "pd-diagnostics")]
     pd_trace::profile(6, prepare_start);
     // Drawing is CPU work. Bound each poll of this task so the PD response
@@ -105,37 +28,13 @@ async fn render<D: DrawTarget<Color = BinaryColor>>(
     embassy_futures::yield_now().await;
     #[cfg(feature = "pd-diagnostics")]
     let header_start = Instant::now();
-    {
-        // These uppercase 6x10 glyphs fit in the first eight pixel rows.
-        // Clip their blank font padding to give the footer a full eight rows.
-        let mut header = display.clipped(&Rectangle::new(Point::zero(), Size::new(96, 8)));
-        let large = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-        Text::with_baseline(&top, Point::zero(), large, Baseline::Top).draw(&mut header)?;
-        let status = match measurements.heater.state {
-            HeaterState::Off => "OFF",
-            HeaterState::Heating => "ON",
-            HeaterState::Regulating => "REG",
-            HeaterState::Fault(_) => "ERR",
-        };
-        Text::with_baseline(status, Point::new(78, 0), large, Baseline::Top).draw(&mut header)?;
-    }
+    frame.draw_header(display)?;
     #[cfg(feature = "pd-diagnostics")]
     pd_trace::profile(7, header_start);
     embassy_futures::yield_now().await;
     #[cfg(feature = "pd-diagnostics")]
     let footer_start = Instant::now();
-    Text::with_baseline(
-        footer,
-        Point::new(0, 8),
-        MonoTextStyle::new(&FONT_5X8, BinaryColor::On),
-        Baseline::Top,
-    )
-    .draw(display)?;
-    if alive {
-        Rectangle::new(Point::new(93, 13), Size::new(3, 3))
-            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-            .draw(display)?;
-    }
+    frame.draw_footer(display, alive)?;
     #[cfg(feature = "pd-diagnostics")]
     pd_trace::profile(8, footer_start);
     embassy_futures::yield_now().await;
@@ -223,7 +122,8 @@ pub async fn run(
                         HeaterState::Heating | HeaterState::Regulating
                     )
                     && previous.measurements.tip_centi_c != state.measurements.tip_centi_c
-                || ui.screen == Screen::Measurements && previous.measurements != state.measurements
+                || matches!(ui.screen, Screen::Measurements { .. })
+                    && previous.measurements != state.measurements
         });
         if redraw {
             #[cfg(feature = "pd-diagnostics")]

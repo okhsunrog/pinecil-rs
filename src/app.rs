@@ -33,10 +33,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn display_orientation(&self) -> Orientation {
-        self.ui
-            .settings
-            .rotation
-            .orientation(self.motion.orientation)
+        self.ui.display_orientation(self.motion.orientation)
     }
 }
 
@@ -81,7 +78,7 @@ pub async fn run<M: RawMutex, const N: usize, const K: usize, const L: usize>(
                 state.ui.handle(event);
             }
             Either5::Fifth(command) => {
-                state.ui.settings.apply(command);
+                state.ui.apply_settings(command);
             }
         }
         if state != previous {
@@ -93,7 +90,7 @@ pub async fn run<M: RawMutex, const N: usize, const K: usize, const L: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::{Button, Screen};
+    use crate::ui::{Button, MenuItem, Screen};
     use core::{
         future::Future,
         pin::{Pin, pin},
@@ -141,6 +138,28 @@ mod tests {
         let state = snapshots.try_get().unwrap();
         assert_eq!(state.ui.settings.setpoint_c, 240);
         assert!(!state.ui.heating_requested);
+
+        // Storage consumes the same snapshots: editing a draft changes the
+        // screen, but must leave the persisted/controller settings untouched.
+        for event in [
+            ButtonEvent::Long(Button::Plus),
+            ButtonEvent::Long(Button::Plus),
+            ButtonEvent::Short(Button::Plus),
+        ] {
+            buttons.try_send(event).unwrap();
+            drive(application.as_mut());
+        }
+        let draft = snapshots.try_get().unwrap();
+        assert_eq!(draft.ui.settings.setpoint_c, 240);
+        assert_eq!(
+            draft.ui.screen,
+            Screen::Edit(crate::ui::Edit::Temperature(245))
+        );
+        buttons.try_send(ButtonEvent::Long(Button::Plus)).unwrap();
+        drive(application.as_mut());
+        let applied = snapshots.try_get().unwrap();
+        assert_eq!(applied.ui.settings.setpoint_c, 245);
+        assert!(!applied.ui.heating_requested);
     }
 
     #[test]
@@ -171,7 +190,16 @@ mod tests {
         }
         buttons.try_send(ButtonEvent::Long(Button::Plus)).unwrap();
         drive(application.as_mut());
-        buttons.try_send(ButtonEvent::Short(Button::Plus)).unwrap();
+        for event in [
+            ButtonEvent::Short(Button::Plus), // Display
+            ButtonEvent::Long(Button::Plus),  // Brightness
+            ButtonEvent::Long(Button::Plus),  // edit
+            ButtonEvent::Short(Button::Plus),
+            ButtonEvent::Long(Button::Plus), // apply
+        ] {
+            buttons.try_send(event).unwrap();
+            drive(application.as_mut());
+        }
         power.sender().send(PowerStatus::Contract {
             mv: 28_000,
             ma: 3_000,
@@ -180,8 +208,8 @@ mod tests {
 
         let state = display.try_get().unwrap();
         assert_eq!(state.ui.settings.setpoint_c, crate::ui::MAX_SETPOINT_C);
-        assert_eq!(state.ui.screen, Screen::Brightness);
-        assert_eq!(state.ui.brightness_level(), 3);
+        assert_eq!(state.ui.screen, Screen::Menu(MenuItem::Brightness));
+        assert_eq!(usize::from(state.ui.settings.brightness), 3);
         assert_eq!(
             state.power,
             PowerStatus::Contract {
@@ -350,9 +378,13 @@ mod tests {
         assert!(!state.ui.heating_requested);
 
         for event in [
-            ButtonEvent::Long(Button::Plus),
-            ButtonEvent::Long(Button::Plus),
-            ButtonEvent::Short(Button::Plus),
+            ButtonEvent::Long(Button::Plus),  // root
+            ButtonEvent::Short(Button::Plus), // Display
+            ButtonEvent::Long(Button::Plus),  // Brightness
+            ButtonEvent::Short(Button::Plus), // Rotation
+            ButtonEvent::Long(Button::Plus),  // edit
+            ButtonEvent::Short(Button::Plus), // Right
+            ButtonEvent::Long(Button::Plus),  // apply
         ] {
             buttons.try_send(event).unwrap();
             drive(application.as_mut());
